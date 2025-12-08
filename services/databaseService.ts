@@ -71,7 +71,7 @@ export const inferSchema = (data: SheetData, tableName: string = 'MyTable'): Tab
 };
 
 // Generate Code Snippets for API usage
-export const generateCodeSnippets = (schema: TableSchema, baseUrl: string = 'https://your-app.vercel.app') => {
+export const generateCodeSnippets = (schema: TableSchema, baseUrl: string = 'https://ai-data.5199.online') => {
   const jsonStructure = JSON.stringify(
     schema.columns.reduce((acc, col) => ({ ...acc, [col.key]: col.type }), {}),
     null,

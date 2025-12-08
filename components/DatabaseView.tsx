@@ -10,7 +10,7 @@ interface DatabaseViewProps {
 const DatabaseView: React.FC<DatabaseViewProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<'schema' | 'json' | 'api'>('schema');
   const [copied, setCopied] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState('https://excel-ai-db.vercel.app');
+  const [baseUrl, setBaseUrl] = useState('https://ai-data.5199.online');
 
   const schema = inferSchema(data);
   const jsonData = sheetToJson(data);
