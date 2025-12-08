@@ -131,7 +131,7 @@ const App: React.FC = () => {
     if (!newData[rowIndex]) {
         newData[rowIndex] = [];
     }
-    // Create a copy of the row to avoid mutation
+    // Create a shallow copy of the row
     newData[rowIndex] = [...newData[rowIndex]];
 
     // Ensure the row is long enough
@@ -139,12 +139,15 @@ const App: React.FC = () => {
       newData[rowIndex].push({ value: "", style: {} });
     }
 
-    // Try to auto-detect number type
+    // Smart Type Detection for Input
     let typedValue: string | number = value;
-    if (value !== '' && !isNaN(Number(value)) && !value.startsWith('0')) {
+    const isNumeric = !isNaN(Number(value)) && value.trim() !== '';
+    // Prevent immediate conversion if typing float (ending in .) or leading zero (01) or simple '0' which might be start of '0.5'
+    const isIntermediateState = value.endsWith('.') || (value.includes('.') && value.endsWith('0')) || (value.startsWith('0') && value.length > 1 && !value.startsWith('0.'));
+
+    if (isNumeric && !isIntermediateState) {
        typedValue = Number(value);
     }
-    if (value === '0') typedValue = 0;
 
     // --- Validation Logic ---
     let isValid = true;
@@ -162,18 +165,17 @@ const App: React.FC = () => {
             
             if (cellVal !== null && cellVal !== undefined && String(cellVal).trim() !== "") {
                 totalCount++;
-                if (typeof cellVal === 'number' || (!isNaN(Number(cellVal)) && String(cellVal).trim() !== "")) {
-                    numericCount++;
-                }
+                const valIsNum = typeof cellVal === 'number' || (!isNaN(Number(cellVal)) && String(cellVal).trim() !== "");
+                if (valIsNum) numericCount++;
             }
         }
 
-        // If > 60% of existing data is numeric, assume it's a Numeric column
-        if (totalCount > 0 && (numericCount / totalCount) > 0.6) {
+        // If > 70% of existing data is numeric, assume it's a Numeric column
+        if (totalCount >= 3 && (numericCount / totalCount) > 0.7) {
              // If user entered a non-empty string that is NOT a number
-             if (value !== '' && isNaN(Number(value))) {
+             if (value !== '' && !isNumeric) {
                  isValid = false;
-                 validationMessage = 'قيمة غير صالحة: هذا العمود يبدو رقمياً، الرجاء إدخال رقم.';
+                 validationMessage = 'قيمة غير صالحة: هذا العمود مخصص للأرقام.';
              }
         }
     }
@@ -351,4 +353,38 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {showUrlInput
+        {showUrlInput && (
+          <div className="bg-white border-b border-purple-100 p-4 animate-in slide-in-from-top-2">
+            <div className="flex gap-2 max-w-2xl mx-auto">
+              <input
+                type="text"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="أدخل رابط CSV أو Google Sheet Published Link..."
+                className="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+              />
+              <button
+                onClick={handleUrlImport}
+                disabled={isLoading}
+                className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {isLoading ? 'جاري الاستيراد...' : 'استيراد'}
+              </button>
+              <button onClick={() => setShowUrlInput(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-hidden relative">
+           {viewMode === 'spreadsheet' ? (
+             <Spreadsheet data={sheetData} onCellChange={handleCellEdit} />
+           ) : (
+             <DatabaseView data={sheetData} />
+           )}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default App;
