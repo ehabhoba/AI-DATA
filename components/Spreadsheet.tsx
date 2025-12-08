@@ -3,9 +3,10 @@ import { SheetData, Cell } from '../types';
 
 interface SpreadsheetProps {
   data: SheetData;
+  onCellChange: (rowIndex: number, colIndex: number, value: string) => void;
 }
 
-const Spreadsheet: React.FC<SpreadsheetProps> = ({ data }) => {
+const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange }) => {
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400 bg-white border rounded-lg">
@@ -30,12 +31,12 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data }) => {
 
   return (
     <div className="overflow-auto border rounded-lg shadow-sm bg-white h-full relative" style={{ direction: 'ltr' }}>
-      <table className="border-collapse w-full text-sm">
+      <table className="border-collapse w-full text-sm table-fixed">
         <thead className="bg-gray-100 sticky top-0 z-10">
           <tr>
             <th className="border border-gray-300 w-12 bg-gray-200 p-1 text-center font-semibold text-gray-600">#</th>
             {cols.map((colIndex) => (
-              <th key={colIndex} className="border border-gray-300 p-2 min-w-[100px] text-center font-semibold text-gray-700">
+              <th key={colIndex} className="border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700">
                 {getColumnLabel(colIndex)}
               </th>
             ))}
@@ -56,16 +57,21 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data }) => {
                     key={`${rowIndex}-${colIndex}`} 
                     className="border border-gray-300 p-0 relative"
                     style={{
-                      backgroundColor: style.backgroundColor || 'transparent',
-                      color: style.color || 'inherit',
-                      fontWeight: style.bold ? 'bold' : 'normal',
-                      fontStyle: style.italic ? 'italic' : 'normal',
-                      textAlign: style.align || 'left'
+                      backgroundColor: style.backgroundColor || 'transparent'
                     }}
                   >
-                    <div className="w-full h-full p-2 whitespace-nowrap overflow-hidden text-ellipsis min-h-[1.5rem] outline-none">
-                      {cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
-                    </div>
+                    <input 
+                      type="text"
+                      className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate"
+                      value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
+                      onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
+                      style={{
+                        color: style.color || 'inherit',
+                        fontWeight: style.bold ? 'bold' : 'normal',
+                        fontStyle: style.italic ? 'italic' : 'normal',
+                        textAlign: style.align || 'left'
+                      }}
+                    />
                   </td>
                 );
               })}

@@ -125,6 +125,38 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCellEdit = (rowIndex: number, colIndex: number, value: string) => {
+    const newData = [...sheetData];
+    // Ensure the row exists
+    if (!newData[rowIndex]) {
+        newData[rowIndex] = [];
+    }
+    // Create a copy of the row to avoid mutation
+    newData[rowIndex] = [...newData[rowIndex]];
+
+    // Ensure the row is long enough
+    while (newData[rowIndex].length <= colIndex) {
+      newData[rowIndex].push({ value: "", style: {} });
+    }
+
+    // Try to auto-detect number type
+    let typedValue: string | number = value;
+    if (value !== '' && !isNaN(Number(value)) && !value.startsWith('0')) {
+       // Avoid converting "01" to 1, but convert "100" to 100
+       // If strict preservation is needed, we can keep as string. 
+       // For now, enabling math capabilities by converting to number.
+       typedValue = Number(value);
+    }
+    // Restore keeping "0" as number
+    if (value === '0') typedValue = 0;
+
+    newData[rowIndex][colIndex] = {
+      ...newData[rowIndex][colIndex],
+      value: typedValue
+    };
+    setSheetData(newData);
+  };
+
   const addMessage = (role: 'user' | 'model', text: string, isError: boolean = false) => {
     setMessages(prev => [...prev, { role, text, isError, timestamp: Date.now() }]);
   };
@@ -320,7 +352,7 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-hidden bg-gray-100 flex flex-col relative">
           {viewMode === 'spreadsheet' ? (
              <div className="flex-1 p-4 overflow-hidden">
-                <Spreadsheet data={sheetData} />
+                <Spreadsheet data={sheetData} onCellChange={handleCellEdit} />
              </div>
           ) : (
              <div className="flex-1 overflow-hidden h-full">
