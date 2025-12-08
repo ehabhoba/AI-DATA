@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
 import { SheetData, Message, OperationType, Cell, ViewMode } from './types';
 import { readExcelFile, exportExcelFile, generateEmptySheet, fetchCsvFromUrl } from './services/excelService';
 import { sendMessageToGemini } from './services/geminiService';
+import { sheetToJson } from './services/databaseService';
 
 const App: React.FC = () => {
   const [sheetData, setSheetData] = useState<SheetData>(generateEmptySheet(20, 10));
@@ -15,9 +16,23 @@ const App: React.FC = () => {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('spreadsheet');
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<number | null>(null);
 
-  // Initial greeting
+  // 1. Load from LocalStorage on startup (Browser Persistence)
   useEffect(() => {
+    const savedData = localStorage.getItem('excel_ai_local_data');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSheetData(parsed);
+        }
+      } catch (e) {
+        console.error("Failed to load local data", e);
+      }
+    }
+
     setMessages([
       {
         role: 'model',
@@ -26,6 +41,45 @@ const App: React.FC = () => {
       }
     ]);
   }, []);
+
+  // 2. Save to LocalStorage whenever data changes (Auto-save locally)
+  useEffect(() => {
+    if (sheetData && sheetData.length > 0) {
+      const timeoutId = setTimeout(() => {
+        localStorage.setItem('excel_ai_local_data', JSON.stringify(sheetData));
+      }, 1000); // Debounce save
+      return () => clearTimeout(timeoutId);
+    }
+  }, [sheetData]);
+
+  // 3. Publish to Cloud (Vercel KV) Function
+  const handlePublishToCloud = async () => {
+    setIsSaving(true);
+    try {
+      // Convert current sheet to JSON Structure for the API
+      const jsonData = sheetToJson(sheetData);
+      
+      const response = await fetch('/api/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(jsonData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save to cloud');
+      }
+
+      setLastSaved(Date.now());
+      addMessage('model', 'تم نشر البيانات بنجاح! الـ API الخاص بك تم تحديثه الآن بالبيانات الجديدة.');
+    } catch (error) {
+      console.error("Cloud Save Error:", error);
+      addMessage('model', 'فشل في نشر البيانات. تأكد من تفعيل Vercel KV في لوحة التحكم (Storage > Create Database).', true);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -66,6 +120,7 @@ const App: React.FC = () => {
   const handleNewSheet = () => {
     if (window.confirm("هل أنت متأكد؟ سيتم مسح البيانات الحالية.")) {
       setSheetData(generateEmptySheet(20, 10));
+      localStorage.removeItem('excel_ai_local_data'); // Clear local storage too
       addMessage('model', 'تم إنشاء ورقة عمل جديدة فارغة.');
     }
   };
@@ -82,26 +137,21 @@ const App: React.FC = () => {
       const response = await sendMessageToGemini(text, sheetData);
       
       // Execute Operations
-      // Create a deep copy of the sheet data to mutate with explicit typing
       let newData: SheetData = sheetData.map(row => row.map(cell => ({ ...cell, style: { ...cell.style } })));
 
       if (response.operations && response.operations.length > 0) {
         response.operations.forEach(op => {
           
           const ensureDimensions = (r: number, c: number) => {
-            // Add rows if needed
             while (newData.length <= r) {
               const cols = Math.max(newData[0]?.length || 10, c + 1);
               const emptyRow: Cell[] = Array(cols).fill(null).map(() => ({ value: "", style: {} }));
               newData.push(emptyRow);
             }
-            
-            // Add cols if needed for specific row
             if (!newData[r]) {
                 const cols = Math.max(newData[0]?.length || 10, c + 1);
                 newData[r] = Array(cols).fill(null).map(() => ({ value: "", style: {} }));
             }
-
             while (newData[r].length <= c) {
               newData[r].push({ value: "", style: {} });
             }
@@ -114,11 +164,9 @@ const App: React.FC = () => {
             if (op.row !== undefined && op.col !== undefined) {
               ensureDimensions(op.row, op.col);
               const cell = newData[op.row][op.col];
-              
               if (op.type === OperationType.SET_CELL && op.value !== undefined) {
                 cell.value = op.value;
               }
-              
               if (op.style) {
                 cell.style = { ...cell.style, ...op.style };
               }
@@ -174,7 +222,7 @@ const App: React.FC = () => {
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* Toolbar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm z-30">
+        <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm z-30 flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center text-white shadow-emerald-200 shadow-lg">
               <FileSpreadsheet size={24} />
@@ -187,7 +235,20 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center bg-gray-100 rounded-lg p-1 mx-4">
+          {/* Sync Button */}
+          <button
+            onClick={handlePublishToCloud}
+            disabled={isSaving}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all shadow-sm
+              ${lastSaved ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-purple-600 text-white hover:bg-purple-700'}
+              ${isSaving ? 'opacity-70 cursor-wait' : ''}
+            `}
+          >
+            {isSaving ? <CloudUpload className="animate-pulse w-4 h-4" /> : lastSaved ? <CheckCircle className="w-4 h-4" /> : <Database className="w-4 h-4" />}
+            {isSaving ? 'جاري النشر...' : lastSaved ? 'تم التحديث' : 'نشر للـ API'}
+          </button>
+
+          <div className="flex items-center bg-gray-100 rounded-lg p-1 mx-2">
             <button
               onClick={() => setViewMode('spreadsheet')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
@@ -213,7 +274,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Hidden File Input */}
             <input
               type="file"
               accept=".xlsx, .xls, .csv"
@@ -222,41 +282,13 @@ const App: React.FC = () => {
               onChange={handleFileUpload}
             />
             
-            <button 
-              onClick={handleNewSheet}
-              className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors flex flex-col items-center gap-1 sm:flex-row sm:gap-2"
-              title="ملف جديد"
-            >
-              <Plus size={20} />
-            </button>
-
-            <button 
-              onClick={() => setShowUrlInput(true)}
-              className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors flex flex-col items-center gap-1 sm:flex-row sm:gap-2"
-              title="رابط"
-            >
-              <LinkIcon size={20} />
-            </button>
-
-            <label 
-              htmlFor="file-upload"
-              className="cursor-pointer p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex flex-col items-center gap-1 sm:flex-row sm:gap-2"
-              title="رفع ملف"
-            >
-              <Upload size={20} />
-            </label>
-
-            <button 
-              onClick={handleExport}
-              className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex flex-col items-center gap-1 sm:flex-row sm:gap-2"
-              title="تحميل"
-            >
-              <Download size={20} />
-            </button>
+            <button onClick={handleNewSheet} className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="جديد"><Plus size={20} /></button>
+            <button onClick={() => setShowUrlInput(true)} className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="استيراد رابط"><LinkIcon size={20} /></button>
+            <label htmlFor="file-upload" className="cursor-pointer p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="رفع"><Upload size={20} /></label>
+            <button onClick={handleExport} className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg" title="تصدير"><Download size={20} /></button>
           </div>
         </header>
 
-        {/* URL Input Modal */}
         {showUrlInput && (
           <div className="absolute inset-0 bg-black/20 z-50 flex items-start justify-center pt-20 backdrop-blur-sm">
             <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-4 animate-in fade-in slide-in-from-top-4">
@@ -269,37 +301,22 @@ const App: React.FC = () => {
                   <X size={20} />
                 </button>
               </div>
-              <p className="text-sm text-gray-500 mb-4">
-                يمكنك استيراد ملف CSV أو رابط Google Sheet (يجب أن يكون منشوراً كـ CSV).
-              </p>
               <input
                 type="text"
                 placeholder="https://docs.google.com/.../export?format=csv"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none text-left"
+                className="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-purple-500 outline-none text-left"
                 dir="ltr"
               />
               <div className="flex justify-end gap-2">
-                <button 
-                  onClick={() => setShowUrlInput(false)}
-                  className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                >
-                  إلغاء
-                </button>
-                <button 
-                  onClick={handleUrlImport}
-                  disabled={isLoading}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                >
-                  {isLoading ? 'جاري التحميل...' : 'استيراد'}
-                </button>
+                <button onClick={() => setShowUrlInput(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">إلغاء</button>
+                <button onClick={handleUrlImport} disabled={isLoading} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">استيراد</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Main Workspace */}
         <main className="flex-1 overflow-hidden bg-gray-100 flex flex-col relative">
           {viewMode === 'spreadsheet' ? (
              <div className="flex-1 p-4 overflow-hidden">
@@ -312,11 +329,10 @@ const App: React.FC = () => {
           )}
         </main>
         
-        {/* Footer Info */}
         <footer className="bg-white border-t border-gray-200 px-4 py-2 text-xs text-gray-500 flex justify-between items-center">
            <span className="flex items-center gap-1">
              <span className={`w-2 h-2 rounded-full animate-pulse ${viewMode === 'database' ? 'bg-purple-500' : 'bg-green-500'}`}></span>
-             {viewMode === 'spreadsheet' ? 'وضع المحرر' : 'وضع قاعدة البيانات'}
+             {viewMode === 'spreadsheet' ? 'Editor Online' : 'DB Engine Active'}
            </span>
            <span className="font-mono">R: {sheetData.length} | C: {sheetData[0]?.length || 0}</span>
         </footer>
