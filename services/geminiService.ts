@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { SheetData, AIResponse, OperationType } from '../types';
 
-const apiKey = process.env.API_KEY || '';
+const apiKey = process.env.API_KEY || 'AIzaSyCONurmW9Mq1ToJK3edsX1_7B0Fhtt3xSY';
 
 // Initialize Gemini
 const ai = new GoogleGenAI({ apiKey });

@@ -11,6 +11,8 @@ export interface CellStyle {
 export interface Cell {
   value: string | number | boolean | null;
   style?: CellStyle;
+  isValid?: boolean;
+  validationMessage?: string;
 }
 
 export type Row = Cell[];

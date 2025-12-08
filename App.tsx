@@ -142,17 +142,47 @@ const App: React.FC = () => {
     // Try to auto-detect number type
     let typedValue: string | number = value;
     if (value !== '' && !isNaN(Number(value)) && !value.startsWith('0')) {
-       // Avoid converting "01" to 1, but convert "100" to 100
-       // If strict preservation is needed, we can keep as string. 
-       // For now, enabling math capabilities by converting to number.
        typedValue = Number(value);
     }
-    // Restore keeping "0" as number
     if (value === '0') typedValue = 0;
+
+    // --- Validation Logic ---
+    let isValid = true;
+    let validationMessage = undefined;
+
+    // Heuristic: Check other values in this column (top 15 rows) to guess the type
+    if (rowIndex > 0) { // Skip checking against header
+        let numericCount = 0;
+        let totalCount = 0;
+        
+        // Scan a sample of the column
+        for (let i = 1; i < Math.min(newData.length, 16); i++) {
+            if (i === rowIndex) continue; // Skip current row being edited
+            const cellVal = newData[i]?.[colIndex]?.value;
+            
+            if (cellVal !== null && cellVal !== undefined && String(cellVal).trim() !== "") {
+                totalCount++;
+                if (typeof cellVal === 'number' || (!isNaN(Number(cellVal)) && String(cellVal).trim() !== "")) {
+                    numericCount++;
+                }
+            }
+        }
+
+        // If > 60% of existing data is numeric, assume it's a Numeric column
+        if (totalCount > 0 && (numericCount / totalCount) > 0.6) {
+             // If user entered a non-empty string that is NOT a number
+             if (value !== '' && isNaN(Number(value))) {
+                 isValid = false;
+                 validationMessage = 'قيمة غير صالحة: هذا العمود يبدو رقمياً، الرجاء إدخال رقم.';
+             }
+        }
+    }
 
     newData[rowIndex][colIndex] = {
       ...newData[rowIndex][colIndex],
-      value: typedValue
+      value: typedValue,
+      isValid,
+      validationMessage
     };
     setSheetData(newData);
   };
@@ -321,57 +351,4 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {showUrlInput && (
-          <div className="absolute inset-0 bg-black/20 z-50 flex items-start justify-center pt-20 backdrop-blur-sm">
-            <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-4 animate-in fade-in slide-in-from-top-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-lg flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-purple-600" />
-                  استيراد من رابط
-                </h3>
-                <button onClick={() => setShowUrlInput(false)} className="text-gray-400 hover:text-red-500">
-                  <X size={20} />
-                </button>
-              </div>
-              <input
-                type="text"
-                placeholder="https://docs.google.com/.../export?format=csv"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-purple-500 outline-none text-left"
-                dir="ltr"
-              />
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setShowUrlInput(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">إلغاء</button>
-                <button onClick={handleUrlImport} disabled={isLoading} className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">استيراد</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <main className="flex-1 overflow-hidden bg-gray-100 flex flex-col relative">
-          {viewMode === 'spreadsheet' ? (
-             <div className="flex-1 p-4 overflow-hidden">
-                <Spreadsheet data={sheetData} onCellChange={handleCellEdit} />
-             </div>
-          ) : (
-             <div className="flex-1 overflow-hidden h-full">
-                <DatabaseView data={sheetData} />
-             </div>
-          )}
-        </main>
-        
-        <footer className="bg-white border-t border-gray-200 px-4 py-2 text-xs text-gray-500 flex justify-between items-center">
-           <span className="flex items-center gap-1">
-             <span className={`w-2 h-2 rounded-full animate-pulse ${viewMode === 'database' ? 'bg-purple-500' : 'bg-green-500'}`}></span>
-             {viewMode === 'spreadsheet' ? 'Editor Online' : 'DB Engine Active'}
-           </span>
-           <span className="font-mono">R: {sheetData.length} | C: {sheetData[0]?.length || 0}</span>
-        </footer>
-
-      </div>
-    </div>
-  );
-};
-
-export default App;
+        {showUrlInput

@@ -1,5 +1,6 @@
 import React from 'react';
 import { SheetData, Cell } from '../types';
+import { AlertCircle } from 'lucide-react';
 
 interface SpreadsheetProps {
   data: SheetData;
@@ -51,27 +52,38 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange }) => {
               {cols.map((colIndex) => {
                 const cell: Cell = row[colIndex] || { value: '', style: {} };
                 const style = cell.style || {};
+                const isInvalid = cell.isValid === false;
                 
                 return (
                   <td 
                     key={`${rowIndex}-${colIndex}`} 
-                    className="border border-gray-300 p-0 relative"
+                    className={`border border-gray-300 p-0 relative ${isInvalid ? 'bg-red-50' : ''}`}
                     style={{
-                      backgroundColor: style.backgroundColor || 'transparent'
+                      backgroundColor: style.backgroundColor || (isInvalid ? '#FEF2F2' : 'transparent')
                     }}
                   >
                     <input 
                       type="text"
-                      className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate"
+                      className={`w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:ring-2 focus:ring-inset z-10 relative truncate
+                        ${isInvalid 
+                            ? 'text-red-700 focus:ring-red-500 placeholder-red-300' 
+                            : 'text-gray-900 focus:bg-blue-50 focus:ring-blue-500'
+                        }`}
                       value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
                       onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
+                      title={cell.validationMessage || ''}
                       style={{
-                        color: style.color || 'inherit',
+                        color: style.color || (isInvalid ? '#B91C1C' : 'inherit'),
                         fontWeight: style.bold ? 'bold' : 'normal',
                         fontStyle: style.italic ? 'italic' : 'normal',
                         textAlign: style.align || 'left'
                       }}
                     />
+                    {isInvalid && (
+                        <div className="absolute top-1 right-1 pointer-events-none" title={cell.validationMessage}>
+                            <div className="w-2 h-2 rounded-full bg-red-500 shadow-sm" />
+                        </div>
+                    )}
                   </td>
                 );
               })}
