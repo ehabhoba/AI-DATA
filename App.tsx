@@ -170,12 +170,12 @@ const App: React.FC = () => {
             }
         }
 
-        // If > 70% of existing data is numeric, assume it's a Numeric column
-        if (totalCount >= 3 && (numericCount / totalCount) > 0.7) {
+        // If > 80% of existing data is numeric, assume it's a Numeric column (Increased threshold for safety)
+        if (totalCount >= 3 && (numericCount / totalCount) > 0.8) {
              // If user entered a non-empty string that is NOT a number
              if (value !== '' && !isNumeric) {
                  isValid = false;
-                 validationMessage = 'قيمة غير صالحة: هذا العمود مخصص للأرقام.';
+                 validationMessage = 'تنبيه: هذا العمود يحتوي على أرقام فقط.';
              }
         }
     }
