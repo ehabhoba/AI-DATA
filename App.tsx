@@ -196,6 +196,31 @@ const App: React.FC = () => {
     setShowLangMenu(false);
   }
 
+  // --- New: Handler for Health Dashboard Fixes ---
+  const handleHealthFix = (issueType: string) => {
+    setShowHealthDashboard(false); // Close dashboard to show chat progress
+    
+    let prompt = "";
+    switch (issueType) {
+      case 'missing_prices':
+        prompt = "لقد اكتشفت أن هناك منتجات بدون أسعار. قم بتقدير أسعار منطقية بناءً على نوع المنتج واسمه، أو ضع سعراً افتراضياً (مثلاً 0.00) مع تمييزه باللون الأحمر للمراجعة.";
+        break;
+      case 'missing_images':
+        prompt = "هناك منتجات تفتقر للصور. استخدم البحث (Google Search) للعثور على روابط صور حقيقية لهذه المنتجات وأضفها في عمود Image Src. إذا لم تجد، اتركها فارغة.";
+        break;
+      case 'seo_issues':
+        prompt = "توجد مشاكل في طول عناوين المنتجات (SEO). قم بإعادة صياغة العناوين الطويلة جداً لتكون أقل من 150 حرفاً وأكثر جاذبية، وتأكد من أن العناوين القصيرة جداً غنية بالكلمات المفتاحية.";
+        break;
+      case 'all':
+        prompt = "قم بإجراء عملية 'إصلاح شامل' للملف:\n1. املأ الأسعار المفقودة بتقديرات منطقية.\n2. ابحث عن روابط صور للمنتجات التي بلا صور.\n3. حسن عناوين المنتجات لـ SEO.\n4. تأكد من صحة التنسيق العام.";
+        break;
+      default:
+        return;
+    }
+    
+    handleSendMessage(prompt, undefined);
+  };
+
   // Row Operations (Context Menu)
   const handleDeleteRow = (rowIndex: number) => {
     const newData = [...sheetData];
@@ -400,7 +425,11 @@ const App: React.FC = () => {
 
       {/* Health Dashboard Overlay */}
       {showHealthDashboard && (
-        <HealthDashboard data={sheetData} onClose={() => setShowHealthDashboard(false)} />
+        <HealthDashboard 
+          data={sheetData} 
+          onClose={() => setShowHealthDashboard(false)} 
+          onFix={handleHealthFix}
+        />
       )}
 
       {/* Mobile Sidebar Toggle */}
