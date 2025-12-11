@@ -1,13 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SheetData, Cell } from '../types';
+import { Trash2, Plus, Eraser, MoreHorizontal } from 'lucide-react';
 
 interface SpreadsheetProps {
   data: SheetData;
   onCellChange: (rowIndex: number, colIndex: number, value: string) => void;
+  onDeleteRow?: (rowIndex: number) => void;
+  onAddRow?: (rowIndex: number) => void;
   highlightedCell?: { r: number, c: number } | null;
 }
 
-const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlightedCell }) => {
+const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlightedCell, onDeleteRow, onAddRow }) => {
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, rowIndex: number } | null>(null);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, rowIndex: number) => {
+    e.preventDefault();
+    setContextMenu({ x: e.pageX, y: e.pageY, rowIndex });
+  };
+
   // Safety check for data
   if (!data || !Array.isArray(data) || data.length === 0) {
     return (
@@ -54,9 +71,15 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
             if (!row) return null;
 
             return (
-              <tr key={rowIndex} className="hover:bg-blue-50 transition-colors">
-                <td className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none">
+              <tr 
+                key={rowIndex} 
+                className="hover:bg-blue-50 transition-colors group"
+                onContextMenu={(e) => handleContextMenu(e, rowIndex)}
+              >
+                <td className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none relative">
                   {rowIndex + 1}
+                  {/* Row Indicator for context menu hint */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </td>
                 {cols.map((colIndex) => {
                   // Fallback for undefined cell or row hole
@@ -92,6 +115,28 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
           })}
         </tbody>
       </table>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div 
+          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50 w-48 animate-in fade-in zoom-in-95"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          dir="rtl"
+        >
+           <button 
+             onClick={() => onDeleteRow?.(contextMenu.rowIndex)}
+             className="w-full text-right px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2"
+           >
+             <Trash2 size={16} /> حذف الصف {contextMenu.rowIndex + 1}
+           </button>
+           <button 
+             onClick={() => onAddRow?.(contextMenu.rowIndex)}
+             className="w-full text-right px-4 py-2 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-2"
+           >
+             <Plus size={16} /> إضافة صف أسفل
+           </button>
+        </div>
+      )}
     </div>
   );
 };

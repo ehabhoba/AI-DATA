@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
+import HealthDashboard from './components/HealthDashboard';
 import { SheetData, Message, OperationType, Cell, ViewMode } from './types';
 import { readExcelFile, exportExcelFile, exportTsvFile, generateEmptySheet, fetchCsvFromUrl } from './services/excelService';
 import { sendMessageToGemini } from './services/geminiService';
@@ -25,6 +26,9 @@ const App: React.FC = () => {
 
   // New: Language Menu State
   const [showLangMenu, setShowLangMenu] = useState(false);
+
+  // New: Health Dashboard State
+  const [showHealthDashboard, setShowHealthDashboard] = useState(false);
 
   // Find and Replace State
   const [showFindReplace, setShowFindReplace] = useState(false);
@@ -49,7 +53,7 @@ const App: React.FC = () => {
     setMessages([
       {
         role: 'model',
-        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n🌍 **جديد: أدوات الترجمة واللغة!**\nيمكنني الآن ترجمة ملفاتك (مع الحفاظ على تنسيق Shopify/Google)، تصحيح الأخطاء الإملائية، وإصلاح مشاكل النصوص.\n\nاضغط على أيقونة "اللغات" في الأعلى للبدء!',
+        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n📊 **اكتمل النظام!**\nلديك الآن "لوحة القيادة الصحية" (زر النبض) لتحليل جودة بياناتك، ودعم كامل للغات، وتصدير مباشر لـ Google و Shopify.\n\nجرب الضغط بالزر الأيمن على الجدول للتحكم في الصفوف!',
         timestamp: Date.now()
       }
     ]);
@@ -182,6 +186,21 @@ const App: React.FC = () => {
     handleSendMessage(`قم بفحص النصوص في الملف. صحح جميع الأخطاء الإملائية والنحوية. أصلح أي نصوص تالفة (Encoding issues). وحد تنسيق الجمل.`, undefined);
     setShowLangMenu(false);
   }
+
+  // Row Operations (Context Menu)
+  const handleDeleteRow = (rowIndex: number) => {
+    const newData = [...sheetData];
+    newData.splice(rowIndex, 1);
+    setSheetData(newData);
+  };
+
+  const handleAddRow = (rowIndex: number) => {
+    const newData = [...sheetData];
+    const colCount = newData[0]?.length || 10;
+    const newRow = Array(colCount).fill(null).map(() => ({ value: "", style: {} }));
+    newData.splice(rowIndex + 1, 0, newRow);
+    setSheetData(newData);
+  };
 
   // --- Find and Replace Logic ---
   const findNext = () => {
@@ -370,6 +389,11 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {/* Health Dashboard Overlay */}
+      {showHealthDashboard && (
+        <HealthDashboard data={sheetData} onClose={() => setShowHealthDashboard(false)} />
+      )}
+
       {/* Mobile Sidebar Toggle */}
       <button 
         className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-emerald-600 text-white rounded-full shadow-lg"
@@ -423,6 +447,16 @@ const App: React.FC = () => {
                 <span className="hidden md:inline">سياسات Google</span>
               </button>
 
+              {/* Health Dashboard Button */}
+              <button 
+                onClick={() => setShowHealthDashboard(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg hover:bg-rose-100 transition-all font-bold text-sm"
+                title="فحص صحة البيانات"
+              >
+                  <Activity size={16} className="animate-pulse" />
+                  تحليل الجودة
+              </button>
+
               {/* Languages Menu */}
               <div className="relative">
                 <button 
@@ -454,15 +488,6 @@ const App: React.FC = () => {
                 title="إكمال تلقائي للبيانات"
               >
                   <Wand2 size={16} />
-                  إكمال تلقائي
-              </button>
-
-              <button 
-                onClick={handleSmartAnalysis}
-                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-purple-200 transition-all font-bold text-sm"
-              >
-                  <BrainCircuit size={16} />
-                  تحليل ذكي
               </button>
               
               <button
@@ -474,7 +499,7 @@ const App: React.FC = () => {
                 `}
               >
                 {isSaving ? <CloudUpload className="animate-pulse w-4 h-4" /> : lastSaved ? <CheckCircle className="w-4 h-4" /> : <Database className="w-4 h-4" />}
-                {isSaving ? 'نشر' : 'حفظ سحابي'}
+                {isSaving ? 'نشر' : 'سحابي'}
               </button>
           </div>
 
@@ -582,6 +607,8 @@ const App: React.FC = () => {
                     data={sheetData} 
                     onCellChange={handleCellEdit} 
                     highlightedCell={currentMatch}
+                    onDeleteRow={handleDeleteRow}
+                    onAddRow={handleAddRow}
                 />
              )
            ) : (
