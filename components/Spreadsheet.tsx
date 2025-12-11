@@ -1,17 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { SheetData, Cell } from '../types';
-import { Trash2, Plus, Eraser, MoreHorizontal } from 'lucide-react';
+import { Trash2, Plus, ArrowRight, ArrowLeft, ArrowDown, ArrowUp } from 'lucide-react';
 
 interface SpreadsheetProps {
   data: SheetData;
   onCellChange: (rowIndex: number, colIndex: number, value: string) => void;
   onDeleteRow?: (rowIndex: number) => void;
   onAddRow?: (rowIndex: number) => void;
+  onDeleteCol?: (colIndex: number) => void;
+  onAddCol?: (colIndex: number) => void;
   highlightedCell?: { r: number, c: number } | null;
 }
 
-const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlightedCell, onDeleteRow, onAddRow }) => {
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, rowIndex: number } | null>(null);
+const Spreadsheet: React.FC<SpreadsheetProps> = ({ 
+  data, 
+  onCellChange, 
+  highlightedCell, 
+  onDeleteRow, 
+  onAddRow,
+  onAddCol,
+  onDeleteCol
+}) => {
+  // Context Menu State: Type (row/col), position (x,y), and index
+  const [contextMenu, setContextMenu] = useState<{ 
+    type: 'row' | 'col', 
+    x: number, 
+    y: number, 
+    index: number 
+  } | null>(null);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -20,9 +36,16 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
-  const handleContextMenu = (e: React.MouseEvent, rowIndex: number) => {
+  const handleRowContextMenu = (e: React.MouseEvent, rowIndex: number) => {
     e.preventDefault();
-    setContextMenu({ x: e.pageX, y: e.pageY, rowIndex });
+    e.stopPropagation();
+    setContextMenu({ type: 'row', x: e.pageX, y: e.pageY, index: rowIndex });
+  };
+
+  const handleColContextMenu = (e: React.MouseEvent, colIndex: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ type: 'col', x: e.pageX, y: e.pageY, index: colIndex });
   };
 
   // Safety check for data
@@ -55,34 +78,39 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
   return (
     <div className="overflow-auto border rounded-lg shadow-sm bg-white h-full relative" style={{ direction: 'ltr' }}>
       <table className="border-collapse w-full text-sm table-fixed">
-        <thead className="bg-gray-100 sticky top-0 z-10">
+        <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
           <tr>
             <th className="border border-gray-300 w-12 bg-gray-200 p-1 text-center font-semibold text-gray-600">#</th>
             {cols.map((colIndex) => (
-              <th key={colIndex} className="border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700">
+              <th 
+                key={colIndex} 
+                className="border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 cursor-pointer select-none transition-colors group"
+                onContextMenu={(e) => handleColContextMenu(e, colIndex)}
+                title="Right click for options"
+              >
                 {getColumnLabel(colIndex)}
+                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 opacity-0 group-hover:opacity-100"></div>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {data.map((row, rowIndex) => {
-            // Check if row is defined
             if (!row) return null;
 
             return (
               <tr 
                 key={rowIndex} 
                 className="hover:bg-blue-50 transition-colors group"
-                onContextMenu={(e) => handleContextMenu(e, rowIndex)}
               >
-                <td className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none relative">
+                <td 
+                  className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none cursor-pointer hover:bg-gray-200 relative"
+                  onContextMenu={(e) => handleRowContextMenu(e, rowIndex)}
+                >
                   {rowIndex + 1}
-                  {/* Row Indicator for context menu hint */}
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 </td>
                 {cols.map((colIndex) => {
-                  // Fallback for undefined cell or row hole
                   const cell: Cell = row[colIndex] || { value: '', style: {} };
                   const style = cell.style || {};
                   const isHighlighted = highlightedCell?.r === rowIndex && highlightedCell?.c === colIndex;
@@ -97,7 +125,7 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
                     >
                       <input 
                         type="text"
-                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate"
+                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate font-sans"
                         value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
                         onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
                         style={{
@@ -119,22 +147,47 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlight
       {/* Context Menu */}
       {contextMenu && (
         <div 
-          className="fixed bg-white border border-gray-200 shadow-xl rounded-lg py-1 z-50 w-48 animate-in fade-in zoom-in-95"
+          className="fixed bg-white border border-gray-200 shadow-2xl rounded-lg py-1 z-50 w-56 animate-in fade-in zoom-in-95"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           dir="rtl"
         >
-           <button 
-             onClick={() => onDeleteRow?.(contextMenu.rowIndex)}
-             className="w-full text-right px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2"
-           >
-             <Trash2 size={16} /> حذف الصف {contextMenu.rowIndex + 1}
-           </button>
-           <button 
-             onClick={() => onAddRow?.(contextMenu.rowIndex)}
-             className="w-full text-right px-4 py-2 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-2"
-           >
-             <Plus size={16} /> إضافة صف أسفل
-           </button>
+           {contextMenu.type === 'row' ? (
+             <>
+                <button 
+                  onClick={() => onDeleteRow?.(contextMenu.index)}
+                  className="w-full text-right px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2"
+                >
+                  <Trash2 size={16} /> حذف الصف {contextMenu.index + 1}
+                </button>
+                <button 
+                  onClick={() => onAddRow?.(contextMenu.index)}
+                  className="w-full text-right px-4 py-2 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-2"
+                >
+                  <ArrowDown size={16} /> إضافة صف أسفل
+                </button>
+             </>
+           ) : (
+             <>
+                <button 
+                  onClick={() => onDeleteCol?.(contextMenu.index)}
+                  className="w-full text-right px-4 py-2 hover:bg-red-50 text-red-600 text-sm flex items-center gap-2"
+                >
+                  <Trash2 size={16} /> حذف العمود {getColumnLabel(contextMenu.index)}
+                </button>
+                <button 
+                  onClick={() => onAddCol?.(contextMenu.index)}
+                  className="w-full text-right px-4 py-2 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-2"
+                >
+                  <ArrowLeft size={16} /> إضافة عمود لليسار
+                </button>
+                 <button 
+                  onClick={() => onAddCol?.(contextMenu.index + 1)}
+                  className="w-full text-right px-4 py-2 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-2"
+                >
+                  <ArrowRight size={16} /> إضافة عمود لليمين
+                </button>
+             </>
+           )}
         </div>
       )}
     </div>

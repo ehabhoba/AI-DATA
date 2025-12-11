@@ -27,7 +27,10 @@ export interface Message {
 export enum OperationType {
   SET_CELL = 'SET_CELL',
   ADD_ROW = 'ADD_ROW',
-  SET_DATA = 'SET_DATA', // Replaces entire sheet
+  DELETE_ROW = 'DELETE_ROW',
+  ADD_COL = 'ADD_COL',       // New: Add Column
+  DELETE_COL = 'DELETE_COL', // New: Delete Column
+  SET_DATA = 'SET_DATA',     // Replaces entire sheet
   FORMAT_CELL = 'FORMAT_CELL', // Updates style only
   CREATE_TABLE = 'CREATE_TABLE',
 }

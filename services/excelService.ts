@@ -83,3 +83,30 @@ export const generateEmptySheet = (rows: number = 20, cols: number = 10): SheetD
     Array(cols).fill(null).map(() => ({ value: "", style: {} }))
   );
 };
+
+// --- Templates ---
+
+export const getShopifyTemplate = (): SheetData => {
+  const headers = ["Handle", "Title", "Body (HTML)", "Vendor", "Type", "Tags", "Published", "Option1 Name", "Option1 Value", "Variant SKU", "Variant Grams", "Variant Inventory Qty", "Variant Price", "Image Src"];
+  const exampleRow = ["example-shirt", "Example T-Shirt", "<strong>Good Quality</strong>", "MyBrand", "Shirt", "Summer, Cotton", "TRUE", "Size", "M", "SKU-123", "200", "50", "29.99", ""];
+  
+  const data = [headers, exampleRow];
+  // Fill rest with empty cells
+  for(let i=0; i<15; i++) {
+    data.push(Array(headers.length).fill(""));
+  }
+  
+  return data.map(row => row.map(val => ({ value: val, style: {} })));
+};
+
+export const getGoogleMerchantTemplate = (): SheetData => {
+  const headers = ["id", "title", "description", "link", "image_link", "availability", "price", "brand", "gtin", "mpn", "google_product_category"];
+  const exampleRow = ["A123", "Wireless Headphones", "Great sound quality", "https://myshop.com/p/123", "https://myshop.com/img/123.jpg", "in_stock", "99.00 USD", "SoundBrand", "1234567890123", "MPN123", "Electronics > Audio > Headphones"];
+  
+  const data = [headers, exampleRow];
+  for(let i=0; i<15; i++) {
+    data.push(Array(headers.length).fill(""));
+  }
+  
+  return data.map(row => row.map(val => ({ value: val, style: {} })));
+};

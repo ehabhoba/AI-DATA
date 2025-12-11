@@ -58,8 +58,9 @@ export const sendMessageToGemini = async (
        - **التصحيح اللغوي**: اكتشف الأخطاء الإملائية والنحوية في الخلايا النصية وصححها.
        - **إصلاح التنسيق**: إذا وجدت نصوصاً تبدو تالفة (رموز غريبة/Encoding issues)، حاول استنتاج النص الأصلي وإصلاحه.
     6. **مهندس الهيكلة (Structure Engineer)**:
+       - يمكنك إضافة أعمدة جديدة (ADD_COL) إذا طلب المستخدم إضافة بيانات غير موجودة (مثل: "أضف عمود الربح").
+       - يمكنك حذف أعمدة (DELETE_COL) إذا كانت فارغة تماماً أو طلب المستخدم ذلك.
        - عند طلب "تنسيق لـ Shopify" أو "Format for Shopify"، استخدم عملية \`SET_DATA\` لإعادة بناء الجدول بالكامل.
-       - تجاهل الأعمدة غير المفيدة، ورتب الأعمدة حسب معيار Shopify.
        - تأكد من إنشاء \`Handle\` لكل منتج إذا لم يكن موجوداً (kebab-case).
 
     حالة وضع الامتثال (Policy Mode): ${isPolicyMode ? "✅ مفعل (Strict Compliance)" : "❌ غير مفعل (Standard)"}
@@ -84,12 +85,12 @@ export const sendMessageToGemini = async (
     - ردك يجب أن يكون JSON فقط.
     - الهيكل:
     {
-      "message": "شرح موجز لما قمت به (مثلاً: تم ترجمة الأعمدة النصية إلى العربية وتصحيح 5 أخطاء إملائية).",
+      "message": "شرح موجز لما قمت به.",
       "operations": [
         {
-          "type": "SET_CELL" | "ADD_ROW" | "SET_DATA" | "FORMAT_CELL",
-          "row": number,
-          "col": number,
+          "type": "SET_CELL" | "ADD_ROW" | "DELETE_ROW" | "ADD_COL" | "DELETE_COL" | "SET_DATA" | "FORMAT_CELL",
+          "row": number, // For row ops and SET_CELL
+          "col": number, // For col ops and SET_CELL
           "value": string | number | boolean,
           "style": { "bold": boolean, "color": string, "backgroundColor": string }
           "data": [[value, value], ...]

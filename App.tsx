@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
 import HealthDashboard from './components/HealthDashboard';
 import { SheetData, Message, OperationType, Cell, ViewMode } from './types';
-import { readExcelFile, exportExcelFile, exportTsvFile, generateEmptySheet, fetchCsvFromUrl } from './services/excelService';
+import { readExcelFile, exportExcelFile, exportTsvFile, generateEmptySheet, getShopifyTemplate, getGoogleMerchantTemplate, fetchCsvFromUrl } from './services/excelService';
 import { sendMessageToGemini } from './services/geminiService';
 import { sheetToJson } from './services/databaseService';
 
@@ -21,6 +21,9 @@ const App: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   
+  // New: Template Menu
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+
   // New: Google Policy Mode State
   const [policyMode, setPolicyMode] = useState(false);
 
@@ -160,13 +163,30 @@ const App: React.FC = () => {
     addMessage('model', 'تم تحميل الملف (TSV) بنجاح!');
   }
 
-  const handleNewSheet = () => {
-    if (window.confirm("هل أنت متأكد؟ سيتم مسح البيانات الحالية.")) {
-      setSheetData(generateEmptySheet(20, 10));
-      localStorage.removeItem('excel_ai_local_data'); 
-      addMessage('model', 'تم إنشاء ورقة عمل جديدة فارغة.');
+  // --- Template Handlers ---
+  const applyTemplate = (type: 'blank' | 'shopify' | 'google') => {
+    let newData: SheetData;
+    let msg = "";
+    
+    switch(type) {
+      case 'shopify':
+        newData = getShopifyTemplate();
+        msg = "تم إنشاء قالب Shopify قياسي.";
+        break;
+      case 'google':
+        newData = getGoogleMerchantTemplate();
+        msg = "تم إنشاء قالب Google Merchant Center.";
+        break;
+      default:
+        newData = generateEmptySheet(20, 10);
+        msg = "تم إنشاء ورقة عمل فارغة.";
     }
-  };
+    
+    setSheetData(newData);
+    localStorage.removeItem('excel_ai_local_data');
+    addMessage('model', msg);
+    setShowTemplateMenu(false);
+  }
 
   const handleSmartAnalysis = () => {
     handleSendMessage("قم بإجراء فحص شامل للملف. استخرج البيانات المفقودة، تحقق من الامتثال لسياسات جوجل وشوبيفاي، واقترح التحسينات.", undefined);
@@ -221,7 +241,7 @@ const App: React.FC = () => {
     handleSendMessage(prompt, undefined);
   };
 
-  // Row Operations (Context Menu)
+  // Row & Column Operations (Full Freedom)
   const handleDeleteRow = (rowIndex: number) => {
     const newData = [...sheetData];
     newData.splice(rowIndex, 1);
@@ -233,6 +253,26 @@ const App: React.FC = () => {
     const colCount = newData[0]?.length || 10;
     const newRow = Array(colCount).fill(null).map(() => ({ value: "", style: {} }));
     newData.splice(rowIndex + 1, 0, newRow);
+    setSheetData(newData);
+  };
+
+  const handleDeleteCol = (colIndex: number) => {
+    if (sheetData.length === 0) return;
+    const newData = sheetData.map(row => {
+        const newRow = [...row];
+        newRow.splice(colIndex, 1);
+        return newRow;
+    });
+    setSheetData(newData);
+  };
+
+  const handleAddCol = (colIndex: number) => {
+    if (sheetData.length === 0) return;
+    const newData = sheetData.map(row => {
+        const newRow = [...row];
+        newRow.splice(colIndex, 0, { value: "", style: {} });
+        return newRow;
+    });
     setSheetData(newData);
   };
 
@@ -388,6 +428,26 @@ const App: React.FC = () => {
                    }
                 });
              }
+          }
+          // New: Handle AI Column Operations
+          else if (op.type === OperationType.ADD_COL && op.col !== undefined) {
+             newData = newData.map(row => {
+                const newRow = [...row];
+                newRow.splice(op.col!, 0, { value: "", style: {} });
+                return newRow;
+             });
+          }
+          else if (op.type === OperationType.DELETE_COL && op.col !== undefined) {
+             newData = newData.map(row => {
+                const newRow = [...row];
+                if (newRow.length > op.col!) {
+                   newRow.splice(op.col!, 1);
+                }
+                return newRow;
+             });
+          }
+          else if (op.type === OperationType.DELETE_ROW && op.row !== undefined) {
+              if (newData.length > op.row) newData.splice(op.row, 1);
           }
         });
         setSheetData(newData);
@@ -578,7 +638,25 @@ const App: React.FC = () => {
             <button onClick={() => setShowFindReplace(!showFindReplace)} className={`p-2 rounded-lg transition-colors ${showFindReplace ? 'bg-yellow-100 text-yellow-700' : 'text-gray-600 hover:bg-gray-100'}`} title="بحث"><Search size={20} /></button>
             <div className="h-6 w-px bg-gray-300 mx-1"></div>
             <input type="file" accept=".xlsx, .xls, .csv, .tsv" id="file-upload" className="hidden" onChange={handleFileUpload} />
-            <button onClick={handleNewSheet} className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="جديد"><Plus size={20} /></button>
+            
+            {/* New Button with Dropdown Logic */}
+            <div className="relative">
+                <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="جديد / قوالب"><Plus size={20} /></button>
+                {showTemplateMenu && (
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 animate-in fade-in zoom-in-95">
+                        <button onClick={() => applyTemplate('blank')} className="w-full text-right px-4 py-3 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2 border-b">
+                          <FileSpreadsheet size={16} className="text-gray-400" /> ورقة فارغة
+                        </button>
+                        <button onClick={() => applyTemplate('shopify')} className="w-full text-right px-4 py-3 text-sm hover:bg-green-50 text-green-700 flex items-center gap-2 border-b font-medium">
+                          <ShoppingBag size={16} className="text-green-600" /> قالب Shopify
+                        </button>
+                        <button onClick={() => applyTemplate('google')} className="w-full text-right px-4 py-3 text-sm hover:bg-blue-50 text-blue-700 flex items-center gap-2 font-medium">
+                          <Globe size={16} className="text-blue-600" /> قالب Google Merchant
+                        </button>
+                    </div>
+                )}
+            </div>
+            
             <button onClick={() => setShowUrlInput(true)} className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="استيراد رابط"><LinkIcon size={20} /></button>
             <label htmlFor="file-upload" className="cursor-pointer p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="رفع"><Upload size={20} /></label>
             <div className="flex bg-gray-50 rounded-lg border border-gray-200">
@@ -638,12 +716,12 @@ const App: React.FC = () => {
                                 <input type="file" accept=".xlsx, .xls, .csv, .tsv" className="hidden" onChange={handleFileUpload} />
                             </label>
                             <div className="grid grid-cols-2 gap-3">
-                                <button onClick={() => handleSendMessage("أنشئ ملف منتجات Shopify تجريبي", undefined)} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
-                                    <FileSpreadsheet size={18} />
+                                <button onClick={() => applyTemplate('shopify')} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
+                                    <ShoppingBag size={18} className="text-green-600" />
                                     قالب Shopify
                                 </button>
-                                <button onClick={() => handleSendMessage("أنشئ Google Merchant Feed لمنتجات إلكترونية", undefined)} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
-                                    <Globe size={18} />
+                                <button onClick={() => applyTemplate('google')} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
+                                    <Globe size={18} className="text-blue-600" />
                                     Google Feed
                                 </button>
                             </div>
@@ -657,6 +735,8 @@ const App: React.FC = () => {
                     highlightedCell={currentMatch}
                     onDeleteRow={handleDeleteRow}
                     onAddRow={handleAddRow}
+                    onAddCol={handleAddCol}
+                    onDeleteCol={handleDeleteCol}
                 />
              )
            ) : (
