@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2 } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
@@ -22,6 +22,9 @@ const App: React.FC = () => {
   
   // New: Google Policy Mode State
   const [policyMode, setPolicyMode] = useState(false);
+
+  // New: Language Menu State
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   // Find and Replace State
   const [showFindReplace, setShowFindReplace] = useState(false);
@@ -46,7 +49,7 @@ const App: React.FC = () => {
     setMessages([
       {
         role: 'model',
-        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n✨ **جديد: ميزة الإكمال التلقائي!**\nيمكنني الآن البحث عن منتجاتك في الإنترنت وتعبئة الخانات الفارغة (الوصف، الأسعار، الصور، الباركود) ببيانات حقيقية.\n\nاضغط على زر العصا السحرية (إكمال تلقائي) لتجربتها!',
+        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n🌍 **جديد: أدوات الترجمة واللغة!**\nيمكنني الآن ترجمة ملفاتك (مع الحفاظ على تنسيق Shopify/Google)، تصحيح الأخطاء الإملائية، وإصلاح مشاكل النصوص.\n\nاضغط على أيقونة "اللغات" في الأعلى للبدء!',
         timestamp: Date.now()
       }
     ]);
@@ -99,7 +102,7 @@ const App: React.FC = () => {
       
       // Auto-trigger AI analysis
       setTimeout(() => {
-          handleSendMessage(`تم تحميل الملف (${file.name}). قم بتحليله واستخراج البيانات الهامة. هل يصلح لـ Shopify أو Google Merchant؟`, undefined);
+          handleSendMessage(`تم تحميل الملف (${file.name}). قم بتحليله، اكتشف اللغة، واستخرج البيانات الهامة. هل يحتاج لترجمة أو إصلاح؟`, undefined);
       }, 800);
 
     } catch (error) {
@@ -168,6 +171,17 @@ const App: React.FC = () => {
   const handleAutoComplete = () => {
     handleSendMessage("قم بعملية (الإكمال التلقائي الذكي): اقرأ أسماء المنتجات الموجودة، وابحث في الإنترنت عن مواصفاتها الحقيقية (الوصف، الوزن، الباركود، السعر). املأ الخانات الفارغة ببيانات حقيقية 100% فقط.", undefined);
   };
+
+  const handleTranslate = (target: 'ar' | 'en') => {
+    const lang = target === 'ar' ? 'العربية' : 'الإنجليزية';
+    handleSendMessage(`قم بترجمة محتوى الملف إلى اللغة ${lang}. \nمهم جداً: حافظ على المصطلحات التقنية (مثل Handle, SKU, Tags) باللغة الإنجليزية لضمان عمل الملف على Shopify/Google. ترجم فقط العناوين والأوصاف والنصوص التسويقية.`, undefined);
+    setShowLangMenu(false);
+  };
+
+  const handleFixLanguage = () => {
+    handleSendMessage(`قم بفحص النصوص في الملف. صحح جميع الأخطاء الإملائية والنحوية. أصلح أي نصوص تالفة (Encoding issues). وحد تنسيق الجمل.`, undefined);
+    setShowLangMenu(false);
+  }
 
   // --- Find and Replace Logic ---
   const findNext = () => {
@@ -408,6 +422,31 @@ const App: React.FC = () => {
                 {policyMode ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
                 <span className="hidden md:inline">سياسات Google</span>
               </button>
+
+              {/* Languages Menu */}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowLangMenu(!showLangMenu)}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-all font-bold text-sm"
+                  title="الترجمة وإصلاح اللغة"
+                >
+                    <Languages size={16} />
+                    اللغات
+                </button>
+                {showLangMenu && (
+                  <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 animate-in fade-in zoom-in-95">
+                    <button onClick={() => handleTranslate('ar')} className="w-full text-right px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2 border-b">
+                      <span>🇸🇦</span> ترجمة للعربية
+                    </button>
+                    <button onClick={() => handleTranslate('en')} className="w-full text-right px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2 border-b">
+                      <span>🇺🇸</span> ترجمة للإنجليزية
+                    </button>
+                    <button onClick={handleFixLanguage} className="w-full text-right px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2">
+                      <span>✨</span> تصحيح إملائي ونحوي
+                    </button>
+                  </div>
+                )}
+              </div>
 
                <button 
                 onClick={handleAutoComplete}
