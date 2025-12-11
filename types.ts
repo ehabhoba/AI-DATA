@@ -11,8 +11,6 @@ export interface CellStyle {
 export interface Cell {
   value: string | number | boolean | null;
   style?: CellStyle;
-  isValid?: boolean;
-  validationMessage?: string;
 }
 
 export type Row = Cell[];
@@ -21,6 +19,7 @@ export type SheetData = Row[];
 export interface Message {
   role: 'user' | 'model';
   text: string;
+  image?: string; // Base64 string for image support
   isError?: boolean;
   timestamp: number;
 }

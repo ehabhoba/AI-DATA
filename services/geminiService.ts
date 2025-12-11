@@ -1,14 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { SheetData, AIResponse, OperationType } from '../types';
 
-const apiKey = process.env.API_KEY || 'AIzaSyCONurmW9Mq1ToJK3edsX1_7B0Fhtt3xSY';
-
 // Initialize Gemini
-const ai = new GoogleGenAI({ apiKey });
+// API key must be strictly obtained from process.env.API_KEY
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to format sheet data for context
 const formatSheetContext = (data: SheetData): string => {
-  const MAX_ROWS = 30; // Increased context slightly
+  const MAX_ROWS = 40; // Increased context for product lists
   // Map complex Cell objects to simple values for the AI context to save tokens
   const simpleData = data.slice(0, MAX_ROWS).map(row => 
     row.map(cell => cell.value)
@@ -17,8 +16,12 @@ const formatSheetContext = (data: SheetData): string => {
   const rowCount = data.length;
   const colCount = data[0]?.length || 0;
   
+  // Try to identify headers specifically
+  const headers = simpleData[0] || [];
+  
   return JSON.stringify({
     summary: `Total Rows: ${rowCount}, Total Columns: ${colCount}`,
+    headers: headers,
     preview: simpleData
   });
 };
@@ -37,78 +40,84 @@ const cleanJsonResponse = (text: string): string => {
 
 export const sendMessageToGemini = async (
   prompt: string,
-  currentSheetData: SheetData
+  currentSheetData: SheetData,
+  imageBase64?: string
 ): Promise<AIResponse> => {
   
-  if (!apiKey) {
-    return {
-      message: "عذراً، لم يتم العثور على مفتاح API. يرجى التأكد من إعداد البيئة بشكل صحيح.",
-      operations: []
-    };
-  }
-
   const sheetContext = formatSheetContext(currentSheetData);
 
   const systemInstruction = `
-    أنت خبير محترف في Excel، مهندس قواعد بيانات، ومحاسب قانوني ذكي.
+    أنت "ExcelAI Pro"، خبير عالمي في إدارة بيانات التجارة الإلكترونية، وتحليل ملفات Excel/CSV، وخبير متخصص في **Shopify**.
     
-    المهام المطلوبة منك:
-    1. **محاسب ذكي**: إنشاء أنظمة محاسبية (يومية، ميزانية، رواتب) مع التنسيق الاحترافي.
-    2. **مهندس بيانات**: هيكلة الجداول لتكون جاهزة كقاعدة بيانات (تحديد الأنواع، تسمية الأعمدة بوضوح).
-    3. **باحث إنترنت**: استخدام Google Search لجلب بيانات حقيقية (أسعار، إحصائيات، عناوين) وتعبئتها في الجدول.
+    قدراتك الأساسية:
+    1. **مدير Shopify**: تفهم تماماً هيكلية ملفات Shopify (Headers: Handle, Title, Body (HTML), Vendor, Type, Tags, Variant Price, Image Src).
+    2. **خبير SEO ومحتوى**: تستطيع كتابة أوصاف منتجات احترافية، تحسين العناوين، وإضافة كلمات مفتاحية.
+    3. **محلل نقدي**: عند طلب "تحليل الملف"، قم بنقد البيانات (الأسعار غير المنطقية، الوصف الناقص، الصور المفقودة) واقترح خطة تصحيح.
+    4. **التعامل مع الصور**: إذا أرسل المستخدم صورة منتج، استخرج بياناتها (الاسم، السعر المتوقع، الوصف) وضعها في الجدول، أو ابحث عن روابط صور مشابهة.
+    5. **باحث إنترنت (Grounding)**: استخدم Google Search للعثور على أسعار المنافسين، روابط صور المنتجات (لخانة Image Src)، وبيانات الموردين.
+
+    قواعد التعامل مع ملفات Shopify:
+    - العمود 'Handle' يجب أن يكون kebab-case (مثال: blue-t-shirt).
+    - العمود 'Body (HTML)' يقبل تنسيق HTML.
+    - عند البحث عن صور، ضع الرابط المباشر للصورة في عمود 'Image Src'.
 
     قواعد الاستجابة الصارمة (JSON ONLY):
-    - يجب أن يكون ردك بصيغة JSON فقط.
-    - لا تضع أي نص خارج كائن JSON.
-    - لا تستخدم 'responseMimeType' في تفكيرك، فقط التزم بالهيكل أدناه.
-
-    الهيكل المطلوب لرد JSON:
+    - ردك يجب أن يكون JSON فقط.
+    - الهيكل:
     {
-      "message": "رسالة قصيرة توضح ما تم فعله (بالعربية)",
+      "message": "نص الرد للمستخدم (بالعربية، احترافي)",
       "operations": [
         {
           "type": "SET_CELL" | "ADD_ROW" | "SET_DATA" | "FORMAT_CELL",
           "row": number,
           "col": number,
           "value": string | number | boolean,
-          "style": { 
-             "bold": boolean, 
-             "color": string, 
-             "backgroundColor": string,
-             "align": "left" | "center" | "right" 
-          },
-          "data": [[value, value], ...] // For SET_DATA or ADD_ROW
+          "style": { "bold": boolean, "color": string, "backgroundColor": string }
+          "data": [[value, value], ...]
         }
       ]
     }
-
-    أمثلة للعمليات:
-    - لإنشاء جدول جديد: استخدم SET_DATA مع مصفوفة ثنائية الأبعاد.
-    - لتلوين الرأس: استخدم FORMAT_CELL للصف 0 مع backgroundColor مميز.
-    - لإضافة بيانات بحث: استخدم ADD_ROW لإضافة النتائج.
 
     سياق الجدول الحالي:
     ${sheetContext}
   `;
 
   try {
+    const parts: any[] = [];
+    
+    // Add image if present
+    if (imageBase64) {
+      // Remove header like "data:image/jpeg;base64," if present
+      const base64Data = imageBase64.split(',')[1] || imageBase64;
+      parts.push({
+        inlineData: {
+          mimeType: 'image/jpeg', // Assuming jpeg/png, API handles most standard types
+          data: base64Data
+        }
+      });
+      parts.push({ text: "الصورة المرفقة هي جزء من سياق الطلب (منتج، فاتورة، أو مثال)." });
+    }
+
+    parts.push({ text: `المستخدم: ${prompt}` });
+
     // IMPORTANT: responseMimeType: 'application/json' is REMOVED because it conflicts with tools: [{googleSearch: {}}]
+    // We rely on the system instruction to force JSON.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.5-flash', // Supports multimodal input (images)
       contents: [
-        { role: 'user', parts: [{ text: `المستخدم: ${prompt}` }] }
+        { role: 'user', parts: parts }
       ],
       config: {
         systemInstruction: systemInstruction,
         tools: [{ googleSearch: {} }], 
-        temperature: 0.3, // Lower temperature for more consistent JSON
+        temperature: 0.3,
       }
     });
 
     const responseText = response.text;
     if (!responseText) throw new Error("No response from AI");
 
-    // Extract Grounding (Search) Metadata
+    // Extract Grounding Metadata
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     let searchSources = "";
     if (groundingChunks) {
@@ -128,9 +137,8 @@ export const sendMessageToGemini = async (
       parsedResponse = JSON.parse(cleanedJson) as AIResponse;
     } catch (e) {
       console.error("JSON Parse Error:", e, "Raw Text:", responseText);
-      // Fallback: Try to construct a valid response from the text if possible, or error out gracefully
       parsedResponse = {
-        message: responseText + "\n(ملاحظة: لم يتم تنفيذ العمليات التلقائية بسبب تنسيق الرد)",
+        message: responseText + "\n(ملاحظة: الرد نصي فقط ولم يتم تنفيذ عمليات تلقائية)",
         operations: []
       };
     }
