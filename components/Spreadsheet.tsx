@@ -4,16 +4,25 @@ import { SheetData, Cell } from '../types';
 interface SpreadsheetProps {
   data: SheetData;
   onCellChange: (rowIndex: number, colIndex: number, value: string) => void;
+  highlightedCell?: { r: number, c: number } | null;
 }
 
-const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange }) => {
-  if (!data || data.length === 0) {
+const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange, highlightedCell }) => {
+  // Safety check for data
+  if (!data || !Array.isArray(data) || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-400 bg-white border rounded-lg">
         <p>لا توجد بيانات لعرضها.</p>
       </div>
     );
   }
+
+  // Calculate max columns safely ignoring undefined rows
+  const maxCols = Math.max(
+    ...data.map(row => (row ? row.length : 0)), 
+    5
+  ); 
+  const cols = Array.from({ length: maxCols }, (_, i) => i);
 
   // Generate column headers (A, B, C...)
   const getColumnLabel = (index: number) => {
@@ -25,9 +34,6 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange }) => {
     }
     return label;
   };
-
-  const maxCols = Math.max(...data.map(row => row.length), 5); 
-  const cols = Array.from({ length: maxCols }, (_, i) => i);
 
   return (
     <div className="overflow-auto border rounded-lg shadow-sm bg-white h-full relative" style={{ direction: 'ltr' }}>
@@ -43,40 +49,47 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({ data, onCellChange }) => {
           </tr>
         </thead>
         <tbody>
-          {data.map((row, rowIndex) => (
-            <tr key={rowIndex} className="hover:bg-blue-50 transition-colors">
-              <td className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none">
-                {rowIndex + 1}
-              </td>
-              {cols.map((colIndex) => {
-                const cell: Cell = row[colIndex] || { value: '', style: {} };
-                const style = cell.style || {};
-                
-                return (
-                  <td 
-                    key={`${rowIndex}-${colIndex}`} 
-                    className="border border-gray-300 p-0 relative"
-                    style={{
-                      backgroundColor: style.backgroundColor || 'transparent'
-                    }}
-                  >
-                    <input 
-                      type="text"
-                      className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate"
-                      value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
-                      onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
+          {data.map((row, rowIndex) => {
+            // Check if row is defined
+            if (!row) return null;
+
+            return (
+              <tr key={rowIndex} className="hover:bg-blue-50 transition-colors">
+                <td className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none">
+                  {rowIndex + 1}
+                </td>
+                {cols.map((colIndex) => {
+                  // Fallback for undefined cell or row hole
+                  const cell: Cell = row[colIndex] || { value: '', style: {} };
+                  const style = cell.style || {};
+                  const isHighlighted = highlightedCell?.r === rowIndex && highlightedCell?.c === colIndex;
+                  
+                  return (
+                    <td 
+                      key={`${rowIndex}-${colIndex}`} 
+                      className={`border border-gray-300 p-0 relative ${isHighlighted ? 'ring-2 ring-yellow-400 z-20' : ''}`}
                       style={{
-                        color: style.color || 'inherit',
-                        fontWeight: style.bold ? 'bold' : 'normal',
-                        fontStyle: style.italic ? 'italic' : 'normal',
-                        textAlign: style.align || 'left'
+                        backgroundColor: isHighlighted ? '#fef9c3' : (style.backgroundColor || 'transparent')
                       }}
-                    />
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+                    >
+                      <input 
+                        type="text"
+                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate"
+                        value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
+                        onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
+                        style={{
+                          color: style.color || 'inherit',
+                          fontWeight: style.bold ? 'bold' : 'normal',
+                          fontStyle: style.italic ? 'italic' : 'normal',
+                          textAlign: style.align || 'left'
+                        }}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

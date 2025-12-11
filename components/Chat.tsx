@@ -51,7 +51,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
           المساعد الذكي
         </h2>
         <p className="text-emerald-100 text-xs mt-1">
-          خبير Shopify، تحليل بيانات، ورؤية حاسوبية
+          خبير إصلاح البيانات، Shopify، والبحث الذكي
         </p>
       </div>
 
@@ -62,17 +62,17 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
             <div className="bg-white p-4 rounded-full w-16 h-16 mx-auto flex items-center justify-center shadow-sm">
                 <Search className="w-8 h-8 text-emerald-500" />
             </div>
-            <p className="text-sm font-medium text-gray-600">كيف يمكنني مساعدتك في ملفاتك التجارية؟</p>
+            <p className="text-sm font-medium text-gray-600">كيف يمكنني مساعدتك في بياناتك؟</p>
             <div className="flex flex-col gap-2 text-xs">
-               <button onClick={() => onSendMessage("حلل ملف المنتجات هذا واقترح تحسينات", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
-                  "حلل ملف المنتجات واقترح تحسينات"
+               <button onClick={() => onSendMessage("افحص الملف وأصلح الأخطاء والبيانات المفقودة", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
+                  "افحص الملف وأصلح البيانات المفقودة"
                </button>
-               <button onClick={() => onSendMessage("جهز هذا الملف للاستيراد في Shopify", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
-                  "تجهيز الملف لمنصة Shopify"
+               <button onClick={() => onSendMessage("تأكد من توافق الأعمدة مع Shopify وصححها", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
+                  "تصحيح الملف لـ Shopify"
                </button>
                <button onClick={() => fileInputRef.current?.click()} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right flex items-center justify-end gap-2">
                   <ImageIcon size={14} />
-                  "رفع صورة منتج لاستخراج بياناته"
+                  "استخراج بيانات من صورة فاتورة/منتج"
                </button>
             </div>
           </div>
@@ -101,7 +101,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
           <div className="flex justify-start">
             <div className="bg-white p-3 rounded-2xl rounded-bl-none border border-gray-200 shadow-sm flex items-center gap-2">
               <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-              <span className="text-gray-500 text-sm">جاري التحليل والمعالجة...</span>
+              <span className="text-gray-500 text-sm">جاري الفحص والمعالجة...</span>
             </div>
           </div>
         )}
@@ -147,7 +147,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="اكتب طلبك... (مثلاً: ابحث عن صور للمنتجات)"
+              placeholder="اكتب طلبك... (مثلاً: أصلح التواريخ)"
               disabled={isLoading}
               className="w-full px-4 py-3 bg-gray-100 border-transparent focus:bg-white border focus:border-emerald-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all text-sm"
             />

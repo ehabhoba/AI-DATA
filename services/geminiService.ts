@@ -7,10 +7,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to format sheet data for context
 const formatSheetContext = (data: SheetData): string => {
-  const MAX_ROWS = 40; // Increased context for product lists
+  const MAX_ROWS = 50; // Context size
   // Map complex Cell objects to simple values for the AI context to save tokens
   const simpleData = data.slice(0, MAX_ROWS).map(row => 
-    row.map(cell => cell.value)
+    row?.map(cell => cell?.value)
   );
   
   const rowCount = data.length;
@@ -41,31 +41,50 @@ const cleanJsonResponse = (text: string): string => {
 export const sendMessageToGemini = async (
   prompt: string,
   currentSheetData: SheetData,
+  isPolicyMode: boolean = false,
   imageBase64?: string
 ): Promise<AIResponse> => {
   
   const sheetContext = formatSheetContext(currentSheetData);
 
   const systemInstruction = `
-    أنت "ExcelAI Pro"، خبير عالمي في إدارة بيانات التجارة الإلكترونية، وتحليل ملفات Excel/CSV، وخبير متخصص في **Shopify**.
+    أنت "ExcelAI Pro"، مساعد ذكي محترف وخبير شامل في:
+    1. **Google Ads & Google Merchant Center (GMC)**: تعرف سياسات الإعلانات، مواصفات الـ Product Feeds، وأسباب الرفض (Disapproval).
+    2. **Shopify**: تعرف بنية ملفات المنتجات (Handle, Title, Tags, Variant Price, etc.).
+    3. **استخراج البيانات (Data Extraction)**: تحويل النصوص العشوائية أو بيانات الصور إلى جدول منظم.
+    4. **محرك إثراء البيانات (Data Enrichment Engine)**:
+       - عندما يطلب منك "الإكمال التلقائي" أو تعبئة البيانات، مهمتك هي البحث عن المنتج في الإنترنت.
+       - **قاعدة صارمة**: استخدم Google Search للعثور على البيانات الحقيقية فقط (الوزن الفعلي، الكود الحقيقي، الوصف الرسمي). لا تخمن (Do not hallucinate).
+       - قم بملء الخانات الفارغة (مثل: Body HTML، Image Src، Barcode/GTIN) بناءً على ما وجدته.
     
-    قدراتك الأساسية:
-    1. **مدير Shopify**: تفهم تماماً هيكلية ملفات Shopify (Headers: Handle, Title, Body (HTML), Vendor, Type, Tags, Variant Price, Image Src).
-    2. **خبير SEO ومحتوى**: تستطيع كتابة أوصاف منتجات احترافية، تحسين العناوين، وإضافة كلمات مفتاحية.
-    3. **محلل نقدي**: عند طلب "تحليل الملف"، قم بنقد البيانات (الأسعار غير المنطقية، الوصف الناقص، الصور المفقودة) واقترح خطة تصحيح.
-    4. **التعامل مع الصور**: إذا أرسل المستخدم صورة منتج، استخرج بياناتها (الاسم، السعر المتوقع، الوصف) وضعها في الجدول، أو ابحث عن روابط صور مشابهة.
-    5. **باحث إنترنت (Grounding)**: استخدم Google Search للعثور على أسعار المنافسين، روابط صور المنتجات (لخانة Image Src)، وبيانات الموردين.
+    حالة وضع الامتثال (Policy Mode): ${isPolicyMode ? "✅ مفعل (Strict Compliance)" : "❌ غير مفعل (Standard)"}
+    
+    المهام والقدرات المطلوبة منك:
 
-    قواعد التعامل مع ملفات Shopify:
-    - العمود 'Handle' يجب أن يكون kebab-case (مثال: blue-t-shirt).
-    - العمود 'Body (HTML)' يقبل تنسيق HTML.
-    - عند البحث عن صور، ضع الرابط المباشر للصورة في عمود 'Image Src'.
+    **أولاً: إكمال وتعبئة البيانات (Enrichment)**
+    - انظر إلى الصفوف التي تحتوي على "Title" ولكن ينقصها "Price" أو "Description".
+    - استخدم اسم المنتج للبحث عنه، ثم املأ الخانات الفارغة.
+    - اكتب وصفاً احترافياً (SEO Friendly) للمنتج إذا كان الوصف مفقوداً.
+    - احفظ سياق البيانات: إذا قام المستخدم بتعبئة عملة معينة سابقاً، التزم بها.
+
+    **ثانياً: خبير Google Merchant Center (GMC)**
+    - الأعمدة المطلوبة: id, title, description, link, image_link, availability, price, google_product_category, brand, gtin.
+    - **عندما يكون Policy Mode مفعلاً**:
+      - تأكد أن "Title" لا يحتوي على كلمات ترويجية (مثل: Free, Best, Offer).
+      - تأكد أن "Title" أقل من 150 حرف.
+      - تأكد أن "Description" نظيف وخالي من الحشو.
+      - صحح حالات الأحرف (تجنب ALL CAPS إلا في الاختصارات).
+      - إذا وجدت مخالفة، قم بإصلاحها تلقائياً وأبلغ المستخدم.
+
+    **ثالثاً: خبير Shopify**
+    - الأعمدة الأساسية: Handle, Title, Body (HTML), Vendor, Type, Tags, Option1 Name, Option1 Value.
+    - تأكد من الـ Handle بصيغة kebab-case.
 
     قواعد الاستجابة الصارمة (JSON ONLY):
     - ردك يجب أن يكون JSON فقط.
     - الهيكل:
     {
-      "message": "نص الرد للمستخدم (بالعربية، احترافي)",
+      "message": "شرح موجز ومهني لما قمت به (مثلاً: تم العثور على مواصفات آيفون 13 وتعبئة الحقول الفارغة).",
       "operations": [
         {
           "type": "SET_CELL" | "ADD_ROW" | "SET_DATA" | "FORMAT_CELL",
@@ -78,7 +97,7 @@ export const sendMessageToGemini = async (
       ]
     }
 
-    سياق الجدول الحالي:
+    سياق الجدول الحالي (ذاكرتك):
     ${sheetContext}
   `;
 
@@ -87,23 +106,20 @@ export const sendMessageToGemini = async (
     
     // Add image if present
     if (imageBase64) {
-      // Remove header like "data:image/jpeg;base64," if present
       const base64Data = imageBase64.split(',')[1] || imageBase64;
       parts.push({
         inlineData: {
-          mimeType: 'image/jpeg', // Assuming jpeg/png, API handles most standard types
+          mimeType: 'image/jpeg', 
           data: base64Data
         }
       });
-      parts.push({ text: "الصورة المرفقة هي جزء من سياق الطلب (منتج، فاتورة، أو مثال)." });
+      parts.push({ text: "استخرج جميع البيانات الممكنة من هذه الصورة (فواتير، منتجات، جداول) وضعها في الجدول." });
     }
 
     parts.push({ text: `المستخدم: ${prompt}` });
 
-    // IMPORTANT: responseMimeType: 'application/json' is REMOVED because it conflicts with tools: [{googleSearch: {}}]
-    // We rely on the system instruction to force JSON.
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', // Supports multimodal input (images)
+      model: 'gemini-2.5-flash', 
       contents: [
         { role: 'user', parts: parts }
       ],
@@ -127,7 +143,7 @@ export const sendMessageToGemini = async (
             .filter(u => u)
         );
         if (uniqueUrls.size > 0) {
-           searchSources = `\n\nالمصادر:\n` + Array.from(uniqueUrls).map(u => `- ${u}`).join("\n");
+           searchSources = `\n\nالمصادر (تم استخدامها لتعبئة البيانات):\n` + Array.from(uniqueUrls).map(u => `- ${u}`).join("\n");
         }
     }
 
@@ -138,7 +154,7 @@ export const sendMessageToGemini = async (
     } catch (e) {
       console.error("JSON Parse Error:", e, "Raw Text:", responseText);
       parsedResponse = {
-        message: responseText + "\n(ملاحظة: الرد نصي فقط ولم يتم تنفيذ عمليات تلقائية)",
+        message: responseText + "\n(ملاحظة: الرد نصي فقط)",
         operations: []
       };
     }

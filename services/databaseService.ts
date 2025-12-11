@@ -4,7 +4,8 @@ import { SheetData, TableSchema, SchemaColumn, Cell } from '../types';
 export const sheetToJson = (data: SheetData): Record<string, any>[] => {
   if (!data || data.length < 2) return [];
 
-  const headers = data[0].map(cell => String(cell.value || '').trim());
+  // Use optional chaining to safely access value
+  const headers = data[0].map(cell => String(cell?.value || '').trim());
   const rows = data.slice(1);
 
   return rows.map(row => {
@@ -13,6 +14,7 @@ export const sheetToJson = (data: SheetData): Record<string, any>[] => {
       if (header) {
         // Simple key sanitization
         const key = header.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        // Safe access to row[index] and .value
         obj[key] = row[index]?.value ?? null;
       }
     });
@@ -26,7 +28,8 @@ export const inferSchema = (data: SheetData, tableName: string = 'MyTable'): Tab
     return { tableName, columns: [], recordCount: 0 };
   }
 
-  const headers = data[0].map(cell => String(cell.value || ''));
+  // Safe header access
+  const headers = data[0].map(cell => String(cell?.value || ''));
   const sampleRows = data.slice(1, 6); // Check first 5 rows for type inference
 
   const columns: SchemaColumn[] = headers.map((header, index) => {
@@ -37,6 +40,7 @@ export const inferSchema = (data: SheetData, tableName: string = 'MyTable'): Tab
 
     // Check values in this column
     for (const row of sampleRows) {
+      // Safe access
       const val = row[index]?.value;
       if (val !== null && val !== undefined && val !== '') {
         sampleValue = val;

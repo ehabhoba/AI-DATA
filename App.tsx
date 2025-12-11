@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2 } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
 import { SheetData, Message, OperationType, Cell, ViewMode } from './types';
-import { readExcelFile, exportExcelFile, generateEmptySheet, fetchCsvFromUrl } from './services/excelService';
+import { readExcelFile, exportExcelFile, exportTsvFile, generateEmptySheet, fetchCsvFromUrl } from './services/excelService';
 import { sendMessageToGemini } from './services/geminiService';
 import { sheetToJson } from './services/databaseService';
 
@@ -19,6 +19,9 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // New: Google Policy Mode State
+  const [policyMode, setPolicyMode] = useState(false);
 
   // Find and Replace State
   const [showFindReplace, setShowFindReplace] = useState(false);
@@ -43,7 +46,7 @@ const App: React.FC = () => {
     setMessages([
       {
         role: 'model',
-        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الرقمي.\n\nأنا متخصص في:\n🛍️ ملفات Shopify والتجارة الإلكترونية.\n🔍 البحث عن صور المنتجات وأسعار المنافسين.\n📸 استخراج البيانات من صور الفواتير أو المنتجات.\n\nيمكنك سحب ملفك هنا للبدء!',
+        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n✨ **جديد: ميزة الإكمال التلقائي!**\nيمكنني الآن البحث عن منتجاتك في الإنترنت وتعبئة الخانات الفارغة (الوصف، الأسعار، الصور، الباركود) ببيانات حقيقية.\n\nاضغط على زر العصا السحرية (إكمال تلقائي) لتجربتها!',
         timestamp: Date.now()
       }
     ]);
@@ -61,7 +64,7 @@ const App: React.FC = () => {
 
   // Helper to check if sheet is effectively empty
   const isSheetEmpty = () => {
-    return !sheetData.some(row => row.some(cell => cell.value !== '' && cell.value !== null));
+    return !sheetData.some(row => row && row.some(cell => cell && cell.value !== '' && cell.value !== null));
   };
 
   // 3. Publish to Cloud (Vercel KV) Function
@@ -96,7 +99,7 @@ const App: React.FC = () => {
       
       // Auto-trigger AI analysis
       setTimeout(() => {
-          handleSendMessage(`حلل هذا الملف (اسم الملف: ${file.name}). هل هو ملف Shopify؟ ما هي المشاكل الظاهرة؟`, undefined);
+          handleSendMessage(`تم تحميل الملف (${file.name}). قم بتحليله واستخراج البيانات الهامة. هل يصلح لـ Shopify أو Google Merchant؟`, undefined);
       }, 800);
 
     } catch (error) {
@@ -116,10 +119,10 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file && (file.name.match(/\.(xlsx|xls|csv)$/i))) {
+    if (file && (file.name.match(/\.(xlsx|xls|csv|tsv|txt)$/i))) {
        await processFile(file);
     } else {
-       alert("يرجى رفع ملف إكسيل (.xlsx, .xls) أو CSV فقط.");
+       alert("يرجى رفع ملف إكسيل، CSV أو TSV.");
     }
   };
 
@@ -142,8 +145,13 @@ const App: React.FC = () => {
 
   const handleExport = () => {
     exportExcelFile(sheetData, 'SmartExcel_Shopify.xlsx');
-    addMessage('model', 'تم تحميل الملف بنجاح!');
+    addMessage('model', 'تم تحميل الملف (Excel) بنجاح!');
   };
+
+  const handleExportTsv = () => {
+    exportTsvFile(sheetData, 'SmartExcel_Export.tsv');
+    addMessage('model', 'تم تحميل الملف (TSV) بنجاح!');
+  }
 
   const handleNewSheet = () => {
     if (window.confirm("هل أنت متأكد؟ سيتم مسح البيانات الحالية.")) {
@@ -154,7 +162,11 @@ const App: React.FC = () => {
   };
 
   const handleSmartAnalysis = () => {
-    handleSendMessage("قم بإجراء نقد وتحليل شامل للملف. تحقق من: 1. جودة وصف المنتجات. 2. منطقية الأسعار. 3. الصور المفقودة (Image Src). 4. توافق الأعمدة مع Shopify. قدم تقريراً.", undefined);
+    handleSendMessage("قم بإجراء فحص شامل للملف. استخرج البيانات المفقودة، تحقق من الامتثال لسياسات جوجل وشوبيفاي، واقترح التحسينات.", undefined);
+  };
+
+  const handleAutoComplete = () => {
+    handleSendMessage("قم بعملية (الإكمال التلقائي الذكي): اقرأ أسماء المنتجات الموجودة، وابحث في الإنترنت عن مواصفاتها الحقيقية (الوصف، الوزن، الباركود، السعر). املأ الخانات الفارغة ببيانات حقيقية 100% فقط.", undefined);
   };
 
   // --- Find and Replace Logic ---
@@ -163,22 +175,32 @@ const App: React.FC = () => {
     let startRow = 0; let startCol = 0;
     if (currentMatch) { startCol = currentMatch.c + 1; startRow = currentMatch.r; }
     let found = false;
-    for (let r = startRow; r < sheetData.length; r++) {
-      const row = sheetData[r];
+    
+    // Safety check for loop
+    const safeData = sheetData || [];
+
+    for (let r = startRow; r < safeData.length; r++) {
+      const row = safeData[r];
+      if (!row) continue; // Skip undefined rows
       const cInit = (r === startRow) ? startCol : 0;
       for (let c = cInit; c < row.length; c++) {
-        const cellValue = String(row[c]?.value || '');
+        // Safe access
+        const cell = row[c];
+        const cellValue = String(cell?.value || '');
         if (cellValue.toLowerCase().includes(findText.toLowerCase())) {
           setCurrentMatch({ r, c }); found = true; return;
         }
       }
     }
     if (!found) {
+      // Wrap around
       for (let r = 0; r <= startRow; r++) {
-         const row = sheetData[r];
+         const row = safeData[r];
+         if (!row) continue;
          const cMax = (r === startRow) ? startCol : row.length;
          for (let c = 0; c < cMax; c++) {
-            const cellValue = String(row[c]?.value || '');
+            const cell = row[c];
+            const cellValue = String(cell?.value || '');
             if (cellValue.toLowerCase().includes(findText.toLowerCase())) {
               setCurrentMatch({ r, c }); found = true; return;
             }
@@ -190,7 +212,8 @@ const App: React.FC = () => {
 
   const replace = () => {
     if (currentMatch && sheetData[currentMatch.r] && sheetData[currentMatch.r][currentMatch.c]) {
-      const cellValue = String(sheetData[currentMatch.r][currentMatch.c].value || '');
+      const cell = sheetData[currentMatch.r][currentMatch.c];
+      const cellValue = String(cell?.value || '');
       const newValue = cellValue.replace(new RegExp(findText, 'i'), replaceText);
       handleCellEdit(currentMatch.r, currentMatch.c, newValue);
       findNext();
@@ -201,7 +224,9 @@ const App: React.FC = () => {
     if (!findText) return;
     let count = 0;
     const newData = sheetData.map((row) => 
-      row.map((cell) => {
+      (row || []).map((cell) => {
+        // Handle null/undefined cells
+        if (!cell) return { value: '', style: {} };
         const cellValue = String(cell.value || '');
         if (cellValue.toLowerCase().includes(findText.toLowerCase())) {
            const newValue = cellValue.split(new RegExp(findText, 'i')).join(replaceText);
@@ -229,10 +254,11 @@ const App: React.FC = () => {
 
     if (isNumeric && !isIntermediateState) typedValue = Number(value);
     
-    // Shopify Handle Logic: If editing 'Handle' column (heuristic), maybe force kebab-case? (Optional enhancement)
-    
+    // Ensure cell object exists before spreading
+    const currentCell = newData[rowIndex][colIndex] || { value: "", style: {} };
+
     newData[rowIndex][colIndex] = {
-      ...newData[rowIndex][colIndex],
+      ...currentCell,
       value: typedValue
     };
     setSheetData(newData);
@@ -247,9 +273,16 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const response = await sendMessageToGemini(text, sheetData, image);
+      // Pass policyMode to the service
+      const response = await sendMessageToGemini(text, sheetData, policyMode, image);
       
-      let newData: SheetData = sheetData.map(row => row.map(cell => ({ ...cell, style: { ...cell.style } })));
+      // Deep Copy with safety checks for null/undefined rows and cells
+      let newData: SheetData = sheetData.map(row => 
+        (row || []).map(cell => {
+          if (!cell) return { value: "", style: {} };
+          return { ...cell, style: { ...(cell.style || {}) } };
+        })
+      );
 
       if (response.operations && response.operations.length > 0) {
         response.operations.forEach(op => {
@@ -267,21 +300,25 @@ const App: React.FC = () => {
           };
 
           if (op.type === OperationType.SET_DATA && op.data) {
-             newData = op.data.map(row => row.map(val => ({ value: val, style: {} })));
+             newData = op.data.map(row => (row || []).map(val => ({ value: val, style: {} })));
           } 
           else if (op.type === OperationType.SET_CELL || op.type === OperationType.FORMAT_CELL) {
             if (op.row !== undefined && op.col !== undefined) {
               ensureDimensions(op.row, op.col);
               const cell = newData[op.row][op.col];
-              if (op.type === OperationType.SET_CELL && op.value !== undefined) cell.value = op.value;
-              if (op.style) cell.style = { ...cell.style, ...op.style };
+              if (cell) {
+                if (op.type === OperationType.SET_CELL && op.value !== undefined) cell.value = op.value;
+                if (op.style) cell.style = { ...cell.style, ...op.style };
+              }
             }
           } 
           else if (op.type === OperationType.ADD_ROW && op.data) {
              if (Array.isArray(op.data)) {
                 op.data.forEach(rowData => {
-                   const newRow: Cell[] = rowData.map(val => ({ value: val, style: {} }));
-                   newData.push(newRow);
+                   if (Array.isArray(rowData)) {
+                      const newRow: Cell[] = rowData.map(val => ({ value: val, style: {} }));
+                      newData.push(newRow);
+                   }
                 });
              }
           }
@@ -314,7 +351,7 @@ const App: React.FC = () => {
             <div className="bg-white p-8 rounded-2xl shadow-2xl text-center transform scale-110 transition-transform">
                 <BrainCircuit className="w-20 h-20 text-emerald-600 mx-auto mb-4 animate-bounce" />
                 <h3 className="text-2xl font-bold text-gray-800">أفلت الملف هنا</h3>
-                <p className="text-emerald-600 mt-2">وسأقوم بتحليله بالذكاء الاصطناعي</p>
+                <p className="text-emerald-600 mt-2">وسأقوم بتحليله وإصلاحه تلقائياً</p>
             </div>
         </div>
       )}
@@ -352,12 +389,35 @@ const App: React.FC = () => {
             <div>
               <h1 className="font-bold text-gray-800 text-lg leading-tight">ExcelAI Pro</h1>
               <span className="text-xs text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                Shopify Expert
+                Shopify & Google Expert
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+              {/* Policy Toggle */}
+              <button 
+                onClick={() => setPolicyMode(!policyMode)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-sm font-bold ${
+                    policyMode 
+                    ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm' 
+                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}
+                title={policyMode ? "سياسات جوجل: مفعلة" : "سياسات جوجل: معطلة"}
+              >
+                {policyMode ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
+                <span className="hidden md:inline">سياسات Google</span>
+              </button>
+
+               <button 
+                onClick={handleAutoComplete}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-500 text-white rounded-lg hover:shadow-lg hover:shadow-teal-200 transition-all font-bold text-sm"
+                title="إكمال تلقائي للبيانات"
+              >
+                  <Wand2 size={16} />
+                  إكمال تلقائي
+              </button>
+
               <button 
                 onClick={handleSmartAnalysis}
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:shadow-lg hover:shadow-purple-200 transition-all font-bold text-sm"
@@ -405,18 +465,21 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <button onClick={() => setShowFindReplace(!showFindReplace)} className={`p-2 rounded-lg transition-colors ${showFindReplace ? 'bg-yellow-100 text-yellow-700' : 'text-gray-600 hover:bg-gray-100'}`} title="بحث"><Search size={20} /></button>
             <div className="h-6 w-px bg-gray-300 mx-1"></div>
-            <input type="file" accept=".xlsx, .xls, .csv" id="file-upload" className="hidden" onChange={handleFileUpload} />
+            <input type="file" accept=".xlsx, .xls, .csv, .tsv" id="file-upload" className="hidden" onChange={handleFileUpload} />
             <button onClick={handleNewSheet} className="p-2 text-gray-600 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="جديد"><Plus size={20} /></button>
             <button onClick={() => setShowUrlInput(true)} className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="استيراد رابط"><LinkIcon size={20} /></button>
             <label htmlFor="file-upload" className="cursor-pointer p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="رفع"><Upload size={20} /></label>
-            <button onClick={handleExport} className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg" title="تصدير"><Download size={20} /></button>
+            <div className="flex bg-gray-50 rounded-lg border border-gray-200">
+                <button onClick={handleExport} className="p-2 text-green-700 hover:bg-green-100 rounded-r-lg border-l" title="تصدير Excel"><Download size={20} /></button>
+                <button onClick={handleExportTsv} className="p-2 text-blue-700 hover:bg-blue-100 rounded-l-lg" title="تصدير TSV"><FileCode size={20} /></button>
+            </div>
           </div>
         </header>
 
         {showUrlInput && (
           <div className="bg-white border-b border-purple-100 p-4 animate-in slide-in-from-top-2">
             <div className="flex gap-2 max-w-2xl mx-auto">
-              <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="أدخل رابط CSV..." className="flex-1 p-2 border border-gray-300 rounded-lg outline-none" />
+              <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="أدخل رابط CSV أو TSV..." className="flex-1 p-2 border border-gray-300 rounded-lg outline-none" />
               <button onClick={handleUrlImport} disabled={isLoading} className="bg-purple-600 text-white px-4 py-2 rounded-lg">استيراد</button>
               <button onClick={() => setShowUrlInput(false)} className="text-gray-500"><X size={20} /></button>
             </div>
@@ -453,23 +516,23 @@ const App: React.FC = () => {
                         </div>
                         <h2 className="text-3xl font-bold text-gray-800 mb-2">إكسيل AI للمتاجر</h2>
                         <p className="text-gray-500 mb-8 leading-relaxed">
-                            أداة الذكاء الاصطناعي لإدارة ملفات المنتجات.<br/>
-                            مثالية لـ <strong>Shopify</strong>، تحليل الأسعار، وإدارة المخزون.
+                            أداة الذكاء الاصطناعي لإدارة ملفات <strong>Shopify</strong> و <strong>Google Ads</strong>.<br/>
+                            دعم كامل لإصلاح البيانات، التحليل، والامتثال للسياسات.
                         </p>
                         <div className="space-y-3">
                             <label className="flex items-center justify-center gap-3 w-full p-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 cursor-pointer transition-all shadow-lg shadow-emerald-200 group">
                                 <Upload className="w-6 h-6 group-hover:scale-110 transition-transform" />
                                 <span className="font-bold text-lg">رفع ملف منتجات</span>
-                                <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleFileUpload} />
+                                <input type="file" accept=".xlsx, .xls, .csv, .tsv" className="hidden" onChange={handleFileUpload} />
                             </label>
                             <div className="grid grid-cols-2 gap-3">
                                 <button onClick={() => handleSendMessage("أنشئ ملف منتجات Shopify تجريبي", undefined)} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
                                     <FileSpreadsheet size={18} />
                                     قالب Shopify
                                 </button>
-                                <button onClick={() => handleSendMessage("ابحث عن منتجات رائجة لبيعها", undefined)} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
+                                <button onClick={() => handleSendMessage("أنشئ Google Merchant Feed لمنتجات إلكترونية", undefined)} className="flex items-center justify-center gap-2 p-3 bg-white border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium text-sm">
                                     <Globe size={18} />
-                                    بحث منتجات
+                                    Google Feed
                                 </button>
                             </div>
                         </div>
