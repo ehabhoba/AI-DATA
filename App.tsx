@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, CloudUpload, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
@@ -53,7 +53,7 @@ const App: React.FC = () => {
     setMessages([
       {
         role: 'model',
-        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n📊 **اكتمل النظام!**\nلديك الآن "لوحة القيادة الصحية" (زر النبض) لتحليل جودة بياناتك، ودعم كامل للغات، وتصدير مباشر لـ Google و Shopify.\n\nجرب الضغط بالزر الأيمن على الجدول للتحكم في الصفوف!',
+        text: 'مرحباً! أنا "إكسيل AI برو" - خبيرك الشامل.\n\n🛍️ **جديد: تنسيق Shopify الفوري!**\nاضغط على زر "تنسيق Shopify" في الأعلى لتحويل ملفك بالكامل إلى الصيغة القياسية لمتجر شوبيفاي، مع تعيين الأعمدة وتوليد الـ Handles تلقائياً.',
         timestamp: Date.now()
       }
     ]);
@@ -174,6 +174,15 @@ const App: React.FC = () => {
 
   const handleAutoComplete = () => {
     handleSendMessage("قم بعملية (الإكمال التلقائي الذكي): اقرأ أسماء المنتجات الموجودة، وابحث في الإنترنت عن مواصفاتها الحقيقية (الوصف، الوزن، الباركود، السعر). املأ الخانات الفارغة ببيانات حقيقية 100% فقط.", undefined);
+  };
+
+  const handleShopifyFormat = () => {
+    handleSendMessage(`قم بإعادة تنسيق الملف بالكامل ليطابق نموذج منتجات Shopify (CSV) القياسي. 
+    1. أعد بناء الجدول (SET_DATA) باستخدام العناوين الرسمية: Handle, Title, Body (HTML), Vendor, Type, Tags, Published, Option1 Name, Option1 Value, Variant SKU, Variant Grams, Variant Inventory Qty, Variant Price, Image Src.
+    2. انقل البيانات الموجودة إلى العمود المناسب (مثلاً انقل عمود "السعر" أو "Cost" إلى "Variant Price").
+    3. أنشئ Handle (kebab-case) من اسم المنتج تلقائياً.
+    4. تأكد من أن Published = TRUE.
+    5. اترك الحقول غير الموجودة فارغة.`, undefined);
   };
 
   const handleTranslate = (target: 'ar' | 'en') => {
@@ -482,6 +491,16 @@ const App: React.FC = () => {
                 )}
               </div>
 
+              {/* Shopify Format Button */}
+               <button 
+                onClick={handleShopifyFormat}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:shadow-lg hover:shadow-green-200 transition-all font-bold text-sm"
+                title="تنسيق Shopify"
+              >
+                  <ShoppingBag size={16} />
+                  Shopify Format
+              </button>
+
                <button 
                 onClick={handleAutoComplete}
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-500 text-white rounded-lg hover:shadow-lg hover:shadow-teal-200 transition-all font-bold text-sm"
@@ -498,7 +517,7 @@ const App: React.FC = () => {
                   ${isSaving ? 'opacity-70 cursor-wait' : ''}
                 `}
               >
-                {isSaving ? <CloudUpload className="animate-pulse w-4 h-4" /> : lastSaved ? <CheckCircle className="w-4 h-4" /> : <Database className="w-4 h-4" />}
+                {isSaving ? <Cloud className="animate-pulse w-4 h-4" /> : lastSaved ? <CheckCircle className="w-4 h-4" /> : <Database className="w-4 h-4" />}
                 {isSaving ? 'نشر' : 'سحابي'}
               </button>
           </div>
