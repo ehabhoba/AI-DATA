@@ -1,13 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { SheetData, AIResponse, OperationType } from '../types';
-
-// Initialize Gemini
-// API key must be strictly obtained from process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to format sheet data for context
 const formatSheetContext = (data: SheetData): string => {
-  const MAX_ROWS = 50; // Context size
+  const MAX_ROWS = 60; // Increased context size
   // Map complex Cell objects to simple values for the AI context to save tokens
   const simpleData = data.slice(0, MAX_ROWS).map(row => 
     row?.map(cell => cell?.value)
@@ -27,11 +23,13 @@ const formatSheetContext = (data: SheetData): string => {
 };
 
 const cleanJsonResponse = (text: string): string => {
-  // Remove markdown code blocks if present
-  let clean = text.replace(/```json\n?|\n?```/g, '').trim();
-  // Sometimes models add text before or after, find the first '{' and last '}'
+  if (!text) return "{}";
+  // Remove markdown code blocks if present (```json ... ```)
+  let clean = text.replace(/```json\n?|```/g, '').trim();
+  // Find the first '{' and last '}' to handle any preamble/postscript text
   const firstBrace = clean.indexOf('{');
   const lastBrace = clean.lastIndexOf('}');
+  
   if (firstBrace !== -1 && lastBrace !== -1) {
     clean = clean.substring(firstBrace, lastBrace + 1);
   }
@@ -45,132 +43,166 @@ export const sendMessageToGemini = async (
   imageBase64?: string
 ): Promise<AIResponse> => {
   
+  // Initialize AI client lazily inside the function to prevent top-level crashes
+  // The API key must be configured in your environment variables (e.g., .env) as API_KEY
+  // Vite replaces process.env.API_KEY with the actual string value during build
+  const apiKey = process.env.API_KEY;
+
+  if (!apiKey) {
+    return {
+      message: "⚠️ خطأ: مفتاح API غير موجود. يرجى التأكد من إضافة 'API_KEY' في إعدادات البيئة (Environment Variables) في Vercel.",
+      operations: []
+    };
+  }
+
+  // Safely initialize the client
+  let ai;
+  try {
+      ai = new GoogleGenAI({ apiKey });
+  } catch (e) {
+      console.error("Failed to initialize GoogleGenAI", e);
+      return {
+          message: "خطأ في تهيئة خدمة الذكاء الاصطناعي. يرجى مراجعة وحدة التحكم (Console).",
+          operations: []
+      }
+  }
+
   const sheetContext = formatSheetContext(currentSheetData);
 
   const systemInstruction = `
-    أنت "ExcelAI Pro"، مساعد ذكي محترف وخبير شامل في:
-    1. **Google Ads & Google Merchant Center (GMC)**: تعرف سياسات الإعلانات، ومواصفات الـ Product Feeds.
-    2. **Shopify**: تعرف بنية ملفات المنتجات (Handle, Title, Tags, Variant Price, etc.).
-    3. **استخراج البيانات**: تحويل النصوص العشوائية أو بيانات الصور إلى جدول منظم.
-    4. **محرك إثراء البيانات**: البحث عن البيانات الحقيقية وتعبئة الخانات الفارغة.
-    5. **خبير اللغات والترجمة (Language & Translation Expert)**:
-       - **الترجمة الذكية**: عند طلب الترجمة، قم بترجمة المحتوى النصي (Title, Description, Body) وحافظ على المصطلحات التقنية (Handle, SKU, Tags, URLs) كما هي دون تغيير لضمان عمل الملف.
-       - **التصحيح اللغوي**: اكتشف الأخطاء الإملائية والنحوية في الخلايا النصية وصححها.
-       - **إصلاح التنسيق**: إذا وجدت نصوصاً تبدو تالفة (رموز غريبة/Encoding issues)، حاول استنتاج النص الأصلي وإصلاحه.
-    6. **مهندس الهيكلة (Structure Engineer)**:
-       - يمكنك إضافة أعمدة جديدة (ADD_COL) إذا طلب المستخدم إضافة بيانات غير موجودة (مثل: "أضف عمود الربح").
-       - يمكنك حذف أعمدة (DELETE_COL) إذا كانت فارغة تماماً أو طلب المستخدم ذلك.
-       - عند طلب "تنسيق لـ Shopify" أو "Format for Shopify"، استخدم عملية \`SET_DATA\` لإعادة بناء الجدول بالكامل.
-       - تأكد من إنشاء \`Handle\` لكل منتج إذا لم يكن موجوداً (kebab-case).
-
-    حالة وضع الامتثال (Policy Mode): ${isPolicyMode ? "✅ مفعل (Strict Compliance)" : "❌ غير مفعل (Standard)"}
+    You are "ExcelAI Pro", a specialized AI for managing Product Feeds (Shopify, Google Merchant).
     
-    المهام والقدرات المطلوبة منك:
+    CRITICAL INSTRUCTION: You MUST return valid JSON only. Do not add markdown formatting.
+    
+    Your Capabilities:
+    1. **Data Cleaning & Formatting**: Fix capitalization, remove whitespace, standardizing formats.
+    2. **Shopify & Google Compliance**: Ensure data meets strict policy requirements (GTIN, Price, Descriptions).
+    3. **Auto-Correction**: Fix spelling, grammar, and encoding errors in Arabic and English.
+    4. **Translation**: Translate Title/Description while KEEPING technical IDs (SKU, Handle) unchanged.
+    5. **Structure Engineering**: You can ADD_COL, DELETE_COL, ADD_ROW, SET_DATA.
 
-    **أولاً: في حالة طلب الترجمة**
-    - ترجم الأعمدة التي تحتوي على وصف بشري (Title, Description).
-    - **لا تترجم** المعرفات (IDs, Handles, SKUs) أو الروابط.
-    - إذا طلب "الترجمة للعربية"، تأكد من استخدام مصطلحات تسويقية احترافية.
+    Policy Mode: ${isPolicyMode ? "STRICT (Remove promotional text, check caps)" : "STANDARD"}
 
-    **ثانياً: في حالة طلب التصحيح (Fix)**
-    - مر على جميع النصوص، صحح الهمزات، التاء المربوطة، والأخطاء الشائعة.
-    - وحد تنسيق الجمل (Capitalization في الإنجليزية).
-
-    **ثالثاً: خبير Google & Shopify**
-    - حافظ على سلامة البيانات الهيكلية.
-    - في Policy Mode، تأكد من إزالة أي عبارات ترويجية مخالفة أثناء الترجمة أو التصحيح.
-    - عند إعادة التنسيق (Reformat)، استخدم فقط الأعمدة القياسية للمنصة المستهدفة.
-
-    قواعد الاستجابة الصارمة (JSON ONLY):
-    - ردك يجب أن يكون JSON فقط.
-    - الهيكل:
+    Response Schema (JSON):
     {
-      "message": "شرح موجز لما قمت به.",
+      "message": "Brief summary of changes (Arabic/English based on user language).",
       "operations": [
         {
-          "type": "SET_CELL" | "ADD_ROW" | "DELETE_ROW" | "ADD_COL" | "DELETE_COL" | "SET_DATA" | "FORMAT_CELL",
-          "row": number, // For row ops and SET_CELL
-          "col": number, // For col ops and SET_CELL
-          "value": string | number | boolean,
-          "style": { "bold": boolean, "color": string, "backgroundColor": string }
-          "data": [[value, value], ...]
+          "type": "SET_CELL" | "ADD_ROW" | "DELETE_ROW" | "ADD_COL" | "DELETE_COL" | "SET_DATA",
+          "row": number, 
+          "col": number, 
+          "value": any,
+          "data": [[...]] // For SET_DATA or ADD_ROW (bulk)
         }
       ]
     }
 
-    سياق الجدول الحالي (ذاكرتك):
+    Current Sheet Context:
     ${sheetContext}
   `;
 
-  try {
-    const parts: any[] = [];
-    
-    // Add image if present
-    if (imageBase64) {
-      const base64Data = imageBase64.split(',')[1] || imageBase64;
-      parts.push({
-        inlineData: {
-          mimeType: 'image/jpeg', 
-          data: base64Data
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const parts: any[] = [];
+      
+      // Add image if present
+      if (imageBase64) {
+        const base64Data = imageBase64.split(',')[1] || imageBase64;
+        parts.push({
+          inlineData: {
+            mimeType: 'image/jpeg', 
+            data: base64Data
+          }
+        });
+        parts.push({ text: "Analyze this image and extract data into the spreadsheet structure." });
+      }
+
+      parts.push({ text: `User Request: ${prompt}` });
+
+      // Use gemini-2.5-flash for speed and efficiency
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', 
+        contents: [
+          { role: 'user', parts: parts }
+        ],
+        config: {
+          systemInstruction: systemInstruction,
+          tools: [{ googleSearch: {} }], 
+          temperature: 0.2, // Lower temperature for more deterministic JSON
+          // Disable safety settings to prevent "No response" on commercial content
+          safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          ]
         }
       });
-      parts.push({ text: "استخرج جميع البيانات الممكنة من هذه الصورة (فواتير، منتجات، جداول) وضعها في الجدول." });
-    }
 
-    parts.push({ text: `المستخدم: ${prompt}` });
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash', 
-      contents: [
-        { role: 'user', parts: parts }
-      ],
-      config: {
-        systemInstruction: systemInstruction,
-        tools: [{ googleSearch: {} }], 
-        temperature: 0.3,
+      const responseText = response.text;
+      
+      if (!responseText) {
+        throw new Error("Received empty response from AI.");
       }
-    });
 
-    const responseText = response.text;
-    if (!responseText) throw new Error("No response from AI");
+      // Extract Grounding Metadata (Sources)
+      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      let searchSources = "";
+      if (groundingChunks) {
+          const uniqueUrls = new Set(
+            groundingChunks
+              .map(c => c.web?.uri)
+              .filter(u => u)
+          );
+          if (uniqueUrls.size > 0) {
+             searchSources = `\n\n🔍 المصادر:\n` + Array.from(uniqueUrls).map(u => `- ${u}`).join("\n");
+          }
+      }
 
-    // Extract Grounding Metadata
-    const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-    let searchSources = "";
-    if (groundingChunks) {
-        const uniqueUrls = new Set(
-          groundingChunks
-            .map(c => c.web?.uri)
-            .filter(u => u)
-        );
-        if (uniqueUrls.size > 0) {
-           searchSources = `\n\nالمصادر (تم استخدامها لتعبئة البيانات):\n` + Array.from(uniqueUrls).map(u => `- ${u}`).join("\n");
-        }
+      let parsedResponse: AIResponse;
+      try {
+        const cleanedJson = cleanJsonResponse(responseText);
+        parsedResponse = JSON.parse(cleanedJson) as AIResponse;
+      } catch (e) {
+        console.warn("JSON Parse Retry", e);
+        // Fallback if AI didn't return JSON
+        parsedResponse = {
+          message: responseText,
+          operations: []
+        };
+      }
+
+      if (searchSources) {
+        parsedResponse.message += searchSources;
+      }
+
+      return parsedResponse;
+
+    } catch (error: any) {
+      console.error(`Gemini Attempt ${attempt + 1} Failed:`, error);
+      
+      // Check for 429 (Too Many Requests) or 503 (Service Unavailable)
+      if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
+        const delay = 1000 * Math.pow(2, attempt);
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      // If it's a 400 or 403 (Invalid Key), break immediately
+      if (error.status === 400 || error.status === 403) {
+        return {
+          message: `خطأ في مفتاح API: ${error.message}. يرجى التحقق من صحة المفتاح في ملف .env`,
+          operations: []
+        };
+      }
     }
-
-    let parsedResponse: AIResponse;
-    try {
-      const cleanedJson = cleanJsonResponse(responseText);
-      parsedResponse = JSON.parse(cleanedJson) as AIResponse;
-    } catch (e) {
-      console.error("JSON Parse Error:", e, "Raw Text:", responseText);
-      parsedResponse = {
-        message: responseText + "\n(ملاحظة: الرد نصي فقط)",
-        operations: []
-      };
-    }
-
-    if (searchSources) {
-      parsedResponse.message += searchSources;
-    }
-
-    return parsedResponse;
-
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return {
-      message: "حدث خطأ أثناء الاتصال بالذكاء الاصطناعي. يرجى المحاولة مرة أخرى.",
-      operations: []
-    };
   }
+
+  return {
+    message: "عذراً، لم نتمكن من الاتصال بالذكاء الاصطناعي بعد عدة محاولات. يرجى المحاولة لاحقاً.",
+    operations: []
+  };
 };

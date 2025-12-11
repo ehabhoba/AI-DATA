@@ -1,14 +1,38 @@
-import React from 'react';
+import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AlertCircle } from 'lucide-react';
 
+// GLOBAL ERROR HANDLER FOR "WHITE SCREEN" ISSUES
+// Catches errors that happen before React even starts (like import errors or process is not defined)
+window.addEventListener('error', (event) => {
+    const root = document.getElementById('root');
+    if (root && root.innerHTML === '') {
+        root.innerHTML = `
+            <div style="font-family: sans-serif; padding: 20px; text-align: center; direction: rtl; color: #333;">
+                <h1 style="color: #ef4444;">عذراً، حدث خطأ جسيم في تحميل التطبيق</h1>
+                <p>يرجى التأكد من إعداد مفاتيح API بشكل صحيح.</p>
+                <div style="background: #f1f1f1; padding: 10px; border-radius: 5px; text-align: left; direction: ltr; margin: 20px 0; overflow: auto; font-family: monospace;">
+                    ${event.message} <br/> ${event.filename} : ${event.lineno}
+                </div>
+                <button onclick="location.reload()" style="background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">إعادة التحميل</button>
+            </div>
+        `;
+    }
+});
+
+interface ErrorBoundaryProps {
+  children?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
 // Simple Error Boundary to catch runtime errors (like missing API keys or process is not defined)
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };

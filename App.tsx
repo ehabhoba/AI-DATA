@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate, Save } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
@@ -21,6 +21,9 @@ const App: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   
+  // Auto-save UI state
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+
   // New: Template Menu
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
 
@@ -38,6 +41,14 @@ const App: React.FC = () => {
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [currentMatch, setCurrentMatch] = useState<{r: number, c: number} | null>(null);
+
+  // Ref for auto-save to access latest data inside setInterval
+  const sheetDataRef = useRef(sheetData);
+
+  // Sync ref with state
+  useEffect(() => {
+    sheetDataRef.current = sheetData;
+  }, [sheetData]);
 
   // 1. Load from LocalStorage on startup (Browser Persistence)
   useEffect(() => {
@@ -62,15 +73,21 @@ const App: React.FC = () => {
     ]);
   }, []);
 
-  // 2. Save to LocalStorage whenever data changes (Auto-save locally)
+  // 2. Auto-save to LocalStorage every 10 seconds
   useEffect(() => {
-    if (sheetData && sheetData.length > 0) {
-      const timeoutId = setTimeout(() => {
-        localStorage.setItem('excel_ai_local_data', JSON.stringify(sheetData));
-      }, 1000); // Debounce save
-      return () => clearTimeout(timeoutId);
-    }
-  }, [sheetData]);
+    const intervalId = setInterval(() => {
+      const currentData = sheetDataRef.current;
+      if (currentData && currentData.length > 0) {
+        localStorage.setItem('excel_ai_local_data', JSON.stringify(currentData));
+        
+        // Trigger UI indicator
+        setIsAutoSaving(true);
+        setTimeout(() => setIsAutoSaving(false), 2000);
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Helper to check if sheet is effectively empty
   const isSheetEmpty = () => {
@@ -472,6 +489,14 @@ const App: React.FC = () => {
       onDrop={handleDrop}
     >
       
+      {/* Auto-save Toast Indicator */}
+      {isAutoSaving && (
+        <div className="fixed bottom-4 left-4 z-50 bg-gray-800/90 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium animate-in slide-in-from-bottom-5 fade-in">
+          <Save size={16} className="text-emerald-400" />
+          تم الحفظ تلقائياً...
+        </div>
+      )}
+
       {/* Drag Overlay */}
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-emerald-500/20 backdrop-blur-sm border-4 border-emerald-500 border-dashed m-4 rounded-xl flex items-center justify-center pointer-events-none">
