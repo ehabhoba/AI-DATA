@@ -3,8 +3,8 @@ import { SheetData, AIResponse, OperationType } from '../types';
 
 // Helper to format sheet data for context
 const formatSheetContext = (data: SheetData): string => {
-  const MAX_ROWS = 60; // Increased context size
-  // Map complex Cell objects to simple values for the AI context to save tokens
+  const MAX_ROWS = 60; // Limit context rows to save tokens/latency
+  // Map complex Cell objects to simple values for the AI context
   const simpleData = data.slice(0, MAX_ROWS).map(row => 
     row?.map(cell => cell?.value)
   );
@@ -80,7 +80,7 @@ export const sendMessageToGemini = async (
     2. **Shopify & Google Compliance**: Ensure data meets strict policy requirements (GTIN, Price, Descriptions).
     3. **Auto-Correction**: Fix spelling, grammar, and encoding errors in Arabic and English.
     4. **Translation**: Translate Title/Description while KEEPING technical IDs (SKU, Handle) unchanged.
-    5. **Structure Engineering**: You can ADD_COL, DELETE_COL, ADD_ROW, SET_DATA.
+    5. **Structure Engineering**: You can ADD_COL (with optional 'data' array to fill it), DELETE_COL, ADD_ROW, SET_DATA.
 
     Policy Mode: ${isPolicyMode ? "STRICT (Remove promotional text, check caps)" : "STANDARD"}
 
@@ -93,7 +93,7 @@ export const sendMessageToGemini = async (
           "row": number, 
           "col": number, 
           "value": any,
-          "data": [[...]] // For SET_DATA or ADD_ROW (bulk)
+          "data": [[...]] // For SET_DATA, ADD_ROW, or ADD_COL (bulk column values in array of arrays format)
         }
       ]
     }
@@ -102,7 +102,7 @@ export const sendMessageToGemini = async (
     ${sheetContext}
   `;
 
-  const maxRetries = 3;
+  const maxRetries = 2;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -193,18 +193,45 @@ export const sendMessageToGemini = async (
     } catch (error: any) {
       console.error(`Gemini Attempt ${attempt + 1} Failed:`, error);
       
+      let errorMsg = error.message || '';
+      const stringifiedError = JSON.stringify(error);
+
+      // Attempt to parse JSON error message if embedded in the response body
+      if (errorMsg.includes('{')) {
+          try {
+             // Try to extract JSON object from string
+             const jsonPart = errorMsg.substring(errorMsg.indexOf('{'));
+             const parsedObj = JSON.parse(jsonPart);
+             if (parsedObj.error?.message) errorMsg = parsedObj.error.message;
+          } catch(e) {
+            // ignore parsing error
+          }
+      }
+
+      // Check for Leaked Key specific error
+      if (
+        errorMsg.includes('leaked') || 
+        errorMsg.includes('API key was reported as leaked') || 
+        stringifiedError.includes('leaked') ||
+        error.status === 403 // Permission denied usually means invalid or leaked key in this context
+      ) {
+          return {
+              message: "⛔ **تنبيه أمني عاجل: مفتاح API مسرب أو غير صالح**\n\nلقد اكتشفت Google أن مفتاح API المستخدم قد تم تسريبه أو حظره.\n\n**كيفية الحل:**\n1. اذهب إلى [Google AI Studio](https://aistudio.google.com/).\n2. قم بإنشاء مفتاح API جديد.\n3. استبدل المفتاح القديم في ملف `.env` (أو إعدادات Vercel).\n4. أعد تشغيل التطبيق.",
+              operations: []
+          };
+      }
+      
       // Check for 429 (Too Many Requests) or 503 (Service Unavailable)
-      if (error.status === 429 || error.status === 503 || error.message?.includes('429')) {
+      if (error.status === 429 || error.status === 503 || errorMsg.includes('429')) {
         const delay = 1000 * Math.pow(2, attempt);
-        console.log(`Retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
       
-      // If it's a 400 or 403 (Invalid Key), break immediately
-      if (error.status === 400 || error.status === 403) {
+      // If it's a 400 (Bad Request)
+      if (error.status === 400 || errorMsg.includes('API key not valid')) {
         return {
-          message: `خطأ في مفتاح API: ${error.message}. يرجى التحقق من صحة المفتاح في ملف .env`,
+          message: `خطأ في الطلب أو مفتاح API: ${errorMsg}. يرجى التحقق من السجلات.`,
           operations: []
         };
       }

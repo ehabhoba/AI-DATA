@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SheetData, Cell } from '../types';
-import { Trash2, Plus, ArrowRight, ArrowLeft, ArrowDown, ArrowUp } from 'lucide-react';
+import { Trash2, Plus, ArrowRight, ArrowLeft, ArrowDown, ArrowUp, Lock } from 'lucide-react';
 
 interface SpreadsheetProps {
   data: SheetData;
@@ -10,9 +10,9 @@ interface SpreadsheetProps {
   onDeleteCol?: (colIndex: number) => void;
   onAddCol?: (colIndex: number) => void;
   highlightedCell?: { r: number, c: number } | null;
-  // New props for selection handling
   selectedCell?: { r: number, c: number } | null;
   onSelect?: (rowIndex: number, colIndex: number) => void;
+  readOnly?: boolean;
 }
 
 const Spreadsheet: React.FC<SpreadsheetProps> = ({ 
@@ -24,7 +24,8 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   onAddCol,
   onDeleteCol,
   selectedCell,
-  onSelect
+  onSelect,
+  readOnly = false
 }) => {
   // Context Menu State: Type (row/col), position (x,y), and index
   const [contextMenu, setContextMenu] = useState<{ 
@@ -42,12 +43,14 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   }, []);
 
   const handleRowContextMenu = (e: React.MouseEvent, rowIndex: number) => {
+    if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     setContextMenu({ type: 'row', x: e.pageX, y: e.pageY, index: rowIndex });
   };
 
   const handleColContextMenu = (e: React.MouseEvent, colIndex: number) => {
+    if (readOnly) return;
     e.preventDefault();
     e.stopPropagation();
     setContextMenu({ type: 'col', x: e.pageX, y: e.pageY, index: colIndex });
@@ -81,7 +84,18 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   };
 
   return (
-    <div className="overflow-auto border rounded-lg shadow-sm bg-white h-full relative" style={{ direction: 'ltr' }}>
+    <div className={`overflow-auto border rounded-lg shadow-sm bg-white h-full relative ${readOnly ? 'cursor-wait' : ''}`} style={{ direction: 'ltr' }}>
+      
+      {/* Read Only Overlay */}
+      {readOnly && (
+        <div className="absolute inset-0 z-50 bg-white/50 backdrop-blur-[1px] flex items-center justify-center animate-in fade-in duration-300">
+            <div className="bg-white px-6 py-3 rounded-full shadow-lg border border-gray-200 flex items-center gap-2 animate-pulse">
+                <Lock size={16} className="text-gray-500" />
+                <span className="text-sm font-medium text-gray-600">الجدول مقفل أثناء المعالجة...</span>
+            </div>
+        </div>
+      )}
+
       <table className="border-collapse w-full text-sm table-fixed">
         <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
           <tr>
@@ -91,10 +105,10 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
                 key={colIndex} 
                 className={`border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 cursor-pointer select-none transition-colors group ${selectedCell?.c === colIndex ? 'bg-blue-100 text-blue-800' : ''}`}
                 onContextMenu={(e) => handleColContextMenu(e, colIndex)}
-                title="Right click for options"
+                title={readOnly ? "مقفل" : "انقر بزر الماوس الأيمن للخيارات"}
               >
                 {getColumnLabel(colIndex)}
-                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 opacity-0 group-hover:opacity-100"></div>
+                {!readOnly && <div className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 opacity-0 group-hover:opacity-100"></div>}
               </th>
             ))}
           </tr>
@@ -113,7 +127,7 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
                   onContextMenu={(e) => handleRowContextMenu(e, rowIndex)}
                 >
                   {rowIndex + 1}
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  {!readOnly && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>}
                 </td>
                 {cols.map((colIndex) => {
                   const cell: Cell = row[colIndex] || { value: '', style: {} };
@@ -133,14 +147,15 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
                       style={{
                         backgroundColor: isHighlighted ? '#fef9c3' : (style.backgroundColor || 'transparent')
                       }}
-                      onClick={() => onSelect?.(rowIndex, colIndex)}
+                      onClick={() => !readOnly && onSelect?.(rowIndex, colIndex)}
                     >
                       <input 
                         type="text"
-                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-white z-10 relative truncate font-sans"
+                        disabled={readOnly}
+                        className={`w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-white z-10 relative truncate font-sans ${readOnly ? 'cursor-not-allowed text-gray-500' : ''}`}
                         value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
                         onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
-                        onFocus={() => onSelect?.(rowIndex, colIndex)}
+                        onFocus={() => !readOnly && onSelect?.(rowIndex, colIndex)}
                         style={{
                           color: style.color || 'inherit',
                           fontWeight: style.bold ? 'bold' : 'normal',
@@ -158,7 +173,7 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
       </table>
 
       {/* Context Menu */}
-      {contextMenu && (
+      {contextMenu && !readOnly && (
         <div 
           className="fixed bg-white border border-gray-200 shadow-2xl rounded-lg py-1 z-50 w-56 animate-in fade-in zoom-in-95"
           style={{ top: contextMenu.y, left: contextMenu.x }}

@@ -307,7 +307,7 @@ const App: React.FC = () => {
 
   const handleAutoCategorize = () => {
     handleSendMessage(`Analyze the product titles in the sheet and attempt to automatically categorize them into the 'Type' column (e.g., 'Shirt', 'Pants', 'Accessory', 'Electronics') based on common patterns found in the 'Title'.
-    1. If the 'Type' column doesn't exist, create it (ADD_COL).
+    1. If the 'Type' column doesn't exist, create it (ADD_COL). **IMPORTANT: Use the 'data' property in the ADD_COL operation to populate the entire column efficiently.**
     2. Populate the column based on the Title.
     3. If a category is ambiguous, mark it as "Review".`, undefined, true);
   };
@@ -553,9 +553,18 @@ const App: React.FC = () => {
           }
           // New: Handle AI Column Operations
           else if (op.type === OperationType.ADD_COL && op.col !== undefined) {
-             newData = newData.map(row => {
+             newData = newData.map((row, rowIndex) => {
                 const newRow = [...row];
-                newRow.splice(op.col!, 0, { value: "", style: {} });
+                let val: string | number | boolean | null = "";
+                
+                // Support bulk data for the new column
+                if (op.data && op.data[rowIndex]) {
+                    val = op.data[rowIndex][0]; // Assuming [[val], [val]] format from AI
+                } else if (op.value !== undefined) {
+                    val = op.value; // Default value fallback
+                }
+
+                newRow.splice(op.col!, 0, { value: val, style: {} });
                 return newRow;
              });
           }
@@ -755,7 +764,7 @@ const App: React.FC = () => {
 
                <button 
                 onClick={handleAutoCategorize}
-                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-400 to-red-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-200 transition-all font-bold text-sm"
+                className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-400 to-red-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-200 transition-all font-bold text-sm"
                 title="تصنيف المنتجات تلقائياً"
               >
                   <Tags size={16} />
@@ -932,16 +941,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {showUrlInput && (
-          <div className="bg-white border-b border-purple-100 p-4 animate-in slide-in-from-top-2">
-            <div className="flex gap-2 max-w-2xl mx-auto">
-              <input type="text" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="أدخل رابط CSV أو TSV..." className="flex-1 p-2 border border-gray-300 rounded-lg outline-none" />
-              <button onClick={handleUrlImport} disabled={isLoading} className="bg-purple-600 text-white px-4 py-2 rounded-lg">استيراد</button>
-              <button onClick={() => setShowUrlInput(false)} className="text-gray-500"><X size={20} /></button>
-            </div>
-          </div>
-        )}
-
         <main className="flex-1 overflow-hidden relative">
            {/* Find and Replace Popover */}
            {showFindReplace && (
@@ -1005,6 +1004,7 @@ const App: React.FC = () => {
                     onDeleteCol={handleDeleteCol}
                     selectedCell={selectedCell}
                     onSelect={(r, c) => setSelectedCell({ r, c })}
+                    readOnly={isLoading}
                 />
              )
            ) : (
