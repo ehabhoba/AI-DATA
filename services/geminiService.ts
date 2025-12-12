@@ -7,10 +7,13 @@ const RAW_API_KEY = process.env.API_KEY || "";
 const API_KEYS = RAW_API_KEY.split(',').filter(k => k && k.trim().length > 0);
 let currentKeyIndex = 0;
 
+// Safety mask for logging (show first 4 chars only)
+const maskKey = (key: string) => key && key.length > 8 ? `${key.substring(0, 4)}...` : '****';
+
 const getNextKey = () => {
   if (API_KEYS.length <= 1) return API_KEYS[0];
   currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-  console.log(`Rotating API Key to index: ${currentKeyIndex}`);
+  console.log(`Rotating API Key to index: ${currentKeyIndex} (${maskKey(API_KEYS[currentKeyIndex])})`);
   return API_KEYS[currentKeyIndex];
 };
 
@@ -194,7 +197,8 @@ export const sendMessageToGemini = async (
 
     } catch (error: any) {
       lastError = error;
-      console.error(`Gemini Attempt ${attempt + 1} Failed (Key Index: ${currentKeyIndex})`, error);
+      const currentKey = getCurrentKey();
+      console.error(`Gemini Attempt ${attempt + 1} Failed (Key: ${maskKey(currentKey)})`, error);
       
       let errorMsg = error.message || '';
       // Parse detailed error if available

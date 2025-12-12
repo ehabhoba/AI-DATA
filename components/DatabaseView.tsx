@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SheetData, TableSchema } from '../types';
 import { inferSchema, sheetToJson, generateCodeSnippets } from '../services/databaseService';
 import { Database, Code, FileJson, Table, Copy, Check, Link, Globe } from 'lucide-react';
@@ -10,11 +10,22 @@ interface DatabaseViewProps {
 const DatabaseView: React.FC<DatabaseViewProps> = ({ data }) => {
   const [activeTab, setActiveTab] = useState<'schema' | 'json' | 'api'>('schema');
   const [copied, setCopied] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState('https://ai-data.5199.online');
+  
+  // Use current window origin if available, otherwise fallback
+  const [baseUrl, setBaseUrl] = useState(() => {
+    if (typeof window !== 'undefined') return window.location.origin;
+    return 'https://your-project.vercel.app';
+  });
 
   const schema = inferSchema(data);
   const jsonData = sheetToJson(data);
   const snippets = generateCodeSnippets(schema, baseUrl);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+        setBaseUrl(window.location.origin);
+    }
+  }, []);
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
