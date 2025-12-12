@@ -2,6 +2,10 @@ import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AlertCircle } from 'lucide-react';
+import { inject } from '@vercel/analytics';
+
+// Initialize Vercel Web Analytics on the client side
+inject();
 
 // GLOBAL ERROR HANDLER FOR "WHITE SCREEN" ISSUES
 // Catches errors that happen before React even starts (like import errors or process is not defined)
