@@ -1,3 +1,4 @@
+
 // Data structure for the spreadsheet
 
 export interface CellStyle {
@@ -65,3 +66,16 @@ export interface TableSchema {
 }
 
 export type ViewMode = 'spreadsheet' | 'database';
+
+// Flash Fill Types
+export interface FlashFillUpdate {
+  r: number;
+  c: number;
+  value: string | number | boolean;
+}
+
+export interface FlashFillSuggestion {
+  name: string;
+  updates: FlashFillUpdate[];
+  sourceColIndex: number;
+}

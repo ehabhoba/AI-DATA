@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate, Save, RotateCcw, RotateCw, Bold, Italic, AlignLeft, AlignCenter, AlignRight, PaintBucket, Type, Tags } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate, Save, RotateCcw, RotateCw, Bold, Italic, AlignLeft, AlignCenter, AlignRight, PaintBucket, Type, Tags, Zap } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
 import HealthDashboard from './components/HealthDashboard';
-import { SheetData, Message, OperationType, Cell, ViewMode } from './types';
+import { SheetData, Message, OperationType, Cell, ViewMode, FlashFillSuggestion } from './types';
 import { readExcelFile, exportExcelFile, exportTsvFile, generateEmptySheet, getShopifyTemplate, getGoogleMerchantTemplate, fetchCsvFromUrl } from './services/excelService';
 import { sendMessageToGemini } from './services/geminiService';
 import { sheetToJson } from './services/databaseService';
+import { detectFlashFillPattern } from './services/flashFillService';
 
 const App: React.FC = () => {
   // Main Data State
@@ -50,6 +51,9 @@ const App: React.FC = () => {
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [currentMatch, setCurrentMatch] = useState<{r: number, c: number} | null>(null);
+
+  // Flash Fill State
+  const [flashFillSuggestion, setFlashFillSuggestion] = useState<FlashFillSuggestion | null>(null);
 
   // Ref for auto-save to access latest data inside setInterval
   const sheetDataRef = useRef(sheetData);
@@ -485,8 +489,43 @@ const App: React.FC = () => {
       value: typedValue
     };
     setSheetData(newData);
-    // Note: We are NOT calling saveToHistory here to avoid lag on typing.
-    // Ideally we'd save on blur. 
+    
+    // Clear previous suggestion on edit
+    setFlashFillSuggestion(null);
+
+    // --- FLASH FILL TRIGGER ---
+    // Only check if value has length (user actually typed something)
+    if (String(typedValue).length > 1) {
+       // Debounce slightly or just run async
+       setTimeout(() => {
+          const suggestion = detectFlashFillPattern(newData, rowIndex, colIndex, String(typedValue));
+          if (suggestion) {
+              setFlashFillSuggestion(suggestion);
+          }
+       }, 300);
+    }
+  };
+  
+  // Apply Flash Fill Updates
+  const applyFlashFill = () => {
+      if (!flashFillSuggestion) return;
+      
+      const newData = [...sheetData];
+      let count = 0;
+      
+      flashFillSuggestion.updates.forEach(update => {
+          const { r, c, value } = update;
+          // Ensure dimensions
+          if (!newData[r]) newData[r] = [];
+          while (newData[r].length <= c) newData[r].push({ value: "", style: {} });
+          
+          newData[r][c] = { ...newData[r][c], value: value };
+          count++;
+      });
+      
+      saveToHistory(newData);
+      setFlashFillSuggestion(null);
+      addMessage('model', `✨ تم تطبيق "تعبئة سحرية" على ${count} خلايا بنجاح!`);
   };
 
   const addMessage = (role: 'user' | 'model', text: string, isError: boolean = false, image?: string) => {
@@ -496,6 +535,7 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string, image?: string, isDeepThink?: boolean) => {
     addMessage('user', text, false, image);
     setIsLoading(true);
+    setFlashFillSuggestion(null); // Clear tooltips when chatting
 
     try {
       // Pass policyMode and DeepThink to the service
@@ -621,6 +661,38 @@ const App: React.FC = () => {
         <div className="fixed bottom-4 left-4 z-50 bg-gray-800/90 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium animate-in slide-in-from-bottom-5 fade-in">
           <Save size={16} className="text-emerald-400" />
           تم الحفظ تلقائياً...
+        </div>
+      )}
+
+      {/* Flash Fill Suggestion Toast */}
+      {flashFillSuggestion && (
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white border border-emerald-200 shadow-2xl p-4 rounded-xl z-50 animate-in slide-in-from-bottom-4 flex items-center gap-4 max-w-md w-full mx-4">
+            <div className="bg-emerald-100 p-3 rounded-full text-emerald-600 shrink-0 animate-pulse">
+                <Zap size={24} fill="currentColor" />
+            </div>
+            <div className="flex-1">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                   تعبئة سحرية (Flash Fill)
+                </h4>
+                <p className="text-sm text-emerald-700 font-medium mt-0.5">{flashFillSuggestion.name}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                    سيتم ملء <strong>{flashFillSuggestion.updates.length}</strong> خلية تلقائياً.
+                </p>
+            </div>
+            <div className="flex gap-2 border-r border-gray-100 pr-4 mr-2 shrink-0">
+                <button 
+                  onClick={applyFlashFill} 
+                  className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 transition shadow-sm hover:shadow-md"
+                >
+                    تطبيق
+                </button>
+                <button 
+                  onClick={() => setFlashFillSuggestion(null)} 
+                  className="bg-gray-50 text-gray-500 px-3 py-2 rounded-lg text-sm hover:bg-gray-100 hover:text-gray-700 transition"
+                >
+                    تجاهل
+                </button>
+            </div>
         </div>
       )}
 
