@@ -200,10 +200,10 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error('Failed to save to cloud');
 
       setLastSaved(Date.now());
-      addMessage('model', 'تم نشر البيانات بنجاح! الـ API جاهز.');
+      addMessage('model', 'تم نشر البيانات بنجاح! الـ API جاهز لاستقبال الطلبات.');
     } catch (error) {
       console.error("Cloud Save Error:", error);
-      addMessage('model', 'فشل في نشر البيانات. تأكد من إعداد قاعدة البيانات.', true);
+      addMessage('model', '⚠️ فشل في النشر. هل قمت بربط قاعدة البيانات (Vercel KV) بالمشروع؟', true);
     } finally {
       setIsSaving(false);
     }

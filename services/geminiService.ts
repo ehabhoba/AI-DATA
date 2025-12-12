@@ -1,6 +1,24 @@
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { SheetData, AIResponse, OperationType } from '../types';
 
+// GLOBAL STATE for Key Rotation
+// We parse the comma-separated keys from process.env.API_KEY
+const RAW_API_KEY = process.env.API_KEY || "";
+const API_KEYS = RAW_API_KEY.split(',').filter(k => k && k.trim().length > 0);
+let currentKeyIndex = 0;
+
+const getNextKey = () => {
+  if (API_KEYS.length <= 1) return API_KEYS[0];
+  currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+  console.log(`Rotating API Key to index: ${currentKeyIndex}`);
+  return API_KEYS[currentKeyIndex];
+};
+
+const getCurrentKey = () => {
+  if (API_KEYS.length === 0) return "";
+  return API_KEYS[currentKeyIndex];
+};
+
 // Helper to format sheet data for context
 const formatSheetContext = (data: SheetData): string => {
   const MAX_ROWS = 60; // Limit context rows to save tokens/latency
@@ -44,28 +62,11 @@ export const sendMessageToGemini = async (
   isDeepThink: boolean = false
 ): Promise<AIResponse> => {
   
-  // Initialize AI client lazily inside the function to prevent top-level crashes
-  // The API key must be configured in your environment variables (e.g., .env) as API_KEY
-  // Vite replaces process.env.API_KEY with the actual string value during build
-  const apiKey = process.env.API_KEY;
-
-  if (!apiKey) {
+  if (API_KEYS.length === 0) {
     return {
-      message: "⚠️ خطأ: مفتاح API غير موجود. يرجى التأكد من إضافة 'API_KEY' في إعدادات البيئة (Environment Variables) في Vercel.",
+      message: "⚠️ **خطأ: مفتاح API مفقود!**\n\nيجب إعداد مفتاح API الخاص بـ Google Gemini ليعمل التطبيق.\n\n**للمستخدمين على Vercel:**\n1. اذهب إلى إعدادات المشروع (Settings > Environment Variables).\n2. أضف متغيرات باسم `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2`... إلخ.\n3. ضع قيم المفاتيح.\n4. قم بإعادة نشر المشروع (Redeploy).",
       operations: []
     };
-  }
-
-  // Safely initialize the client
-  let ai;
-  try {
-      ai = new GoogleGenAI({ apiKey });
-  } catch (e) {
-      console.error("Failed to initialize GoogleGenAI", e);
-      return {
-          message: "خطأ في تهيئة خدمة الذكاء الاصطناعي. يرجى مراجعة وحدة التحكم (Console).",
-          operations: []
-      }
   }
 
   const sheetContext = formatSheetContext(currentSheetData);
@@ -102,10 +103,16 @@ export const sendMessageToGemini = async (
     ${sheetContext}
   `;
 
-  const maxRetries = 2;
+  // Key Rotation Loop
+  // We try up to (Number of Keys * 2) times to handle transient errors and rotation
+  const maxAttempts = Math.max(2, API_KEYS.length * 2);
+  let lastError: any = null;
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
+      const currentApiKey = getCurrentKey();
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+
       const parts: any[] = [];
       
       // Add image if present
@@ -135,14 +142,10 @@ export const sendMessageToGemini = async (
         ]
       };
 
-      // Add thinking config if deep thinking is enabled
-      // Note: thinkingConfig is only supported on specific models like gemini-2.5-flash-thinking (if available) or as a parameter on 2.5 series
       if (isDeepThink) {
-         // Using thinking budget for complex reasoning
          config.thinkingConfig = { thinkingBudget: 4096 }; 
       }
 
-      // Use gemini-2.5-flash for speed and efficiency
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', 
         contents: [
@@ -157,7 +160,7 @@ export const sendMessageToGemini = async (
         throw new Error("Received empty response from AI.");
       }
 
-      // Extract Grounding Metadata (Sources)
+      // Success! Process response
       const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       let searchSources = "";
       if (groundingChunks) {
@@ -177,7 +180,6 @@ export const sendMessageToGemini = async (
         parsedResponse = JSON.parse(cleanedJson) as AIResponse;
       } catch (e) {
         console.warn("JSON Parse Retry", e);
-        // Fallback if AI didn't return JSON
         parsedResponse = {
           message: responseText,
           operations: []
@@ -191,55 +193,49 @@ export const sendMessageToGemini = async (
       return parsedResponse;
 
     } catch (error: any) {
-      console.error(`Gemini Attempt ${attempt + 1} Failed:`, error);
+      lastError = error;
+      console.error(`Gemini Attempt ${attempt + 1} Failed (Key Index: ${currentKeyIndex})`, error);
       
       let errorMsg = error.message || '';
-      const stringifiedError = JSON.stringify(error);
-
-      // Attempt to parse JSON error message if embedded in the response body
-      if (errorMsg.includes('{')) {
-          try {
-             // Try to extract JSON object from string
+      // Parse detailed error if available
+      try {
+         if (errorMsg.includes('{')) {
              const jsonPart = errorMsg.substring(errorMsg.indexOf('{'));
              const parsedObj = JSON.parse(jsonPart);
              if (parsedObj.error?.message) errorMsg = parsedObj.error.message;
-          } catch(e) {
-            // ignore parsing error
-          }
+         }
+      } catch(e) { /* ignore */ }
+
+      const isLeaked = errorMsg.includes('leaked') || errorMsg.includes('API key was reported as leaked') || error.status === 403;
+      const isQuota = error.status === 429 || errorMsg.includes('429');
+      
+      // If Key is Leaked or Forbidden, ROTATE immediately and retry
+      if (isLeaked) {
+         console.warn("Key appears leaked or invalid. Rotating...");
+         getNextKey();
+         continue; 
       }
 
-      // Check for Leaked Key specific error
-      if (
-        errorMsg.includes('leaked') || 
-        errorMsg.includes('API key was reported as leaked') || 
-        stringifiedError.includes('leaked') ||
-        error.status === 403 // Permission denied usually means invalid or leaked key in this context
-      ) {
-          return {
-              message: "⛔ **تنبيه أمني عاجل: مفتاح API مسرب أو غير صالح**\n\nلقد اكتشفت Google أن مفتاح API المستخدم قد تم تسريبه أو حظره.\n\n**كيفية الحل:**\n1. اذهب إلى [Google AI Studio](https://aistudio.google.com/).\n2. قم بإنشاء مفتاح API جديد.\n3. استبدل المفتاح القديم في ملف `.env` (أو إعدادات Vercel).\n4. أعد تشغيل التطبيق.",
-              operations: []
-          };
+      // If Quota limit, ROTATE and retry (load balancing)
+      if (isQuota) {
+         console.warn("Quota exceeded. Rotating...");
+         getNextKey();
+         // Small delay before retry
+         await new Promise(resolve => setTimeout(resolve, 500));
+         continue;
       }
-      
-      // Check for 429 (Too Many Requests) or 503 (Service Unavailable)
-      if (error.status === 429 || error.status === 503 || errorMsg.includes('429')) {
-        const delay = 1000 * Math.pow(2, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        continue;
-      }
-      
-      // If it's a 400 (Bad Request)
-      if (error.status === 400 || errorMsg.includes('API key not valid')) {
-        return {
-          message: `خطأ في الطلب أو مفتاح API: ${errorMsg}. يرجى التحقق من السجلات.`,
-          operations: []
-        };
+
+      // If other error, wait and retry (standard backoff) but stick to same key unless it's a persistent issue
+      if (attempt < maxAttempts - 1) {
+         await new Promise(resolve => setTimeout(resolve, 1000));
+         continue;
       }
     }
   }
 
+  // If we exhaust all attempts
   return {
-    message: "عذراً، لم نتمكن من الاتصال بالذكاء الاصطناعي بعد عدة محاولات. يرجى المحاولة لاحقاً.",
+    message: `⛔ **فشل الاتصال بجميع المفاتيح**\n\nلقد حاولنا استخدام ${API_KEYS.length} مفاتيح متوفرة ولكن جميعها فشلت. \nآخر خطأ: ${lastError?.message || 'Unknown Error'}`,
     operations: []
   };
 };
