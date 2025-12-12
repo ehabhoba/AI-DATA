@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate, Save, RotateCcw, RotateCw } from 'lucide-react';
+import { Upload, Download, FileSpreadsheet, Plus, Menu, X, Link as LinkIcon, Globe, Database, Table, Cloud, CheckCircle, AlertCircle, Search, Replace, Sparkles, BrainCircuit, FileCode, ShieldCheck, ShieldAlert, Wand2, Languages, Activity, ShoppingBag, LayoutTemplate, Save, RotateCcw, RotateCw, Bold, Italic, AlignLeft, AlignCenter, AlignRight, PaintBucket, Type, Tags } from 'lucide-react';
 import Spreadsheet from './components/Spreadsheet';
 import Chat from './components/Chat';
 import DatabaseView from './components/DatabaseView';
@@ -27,6 +27,9 @@ const App: React.FC = () => {
   const [lastSaved, setLastSaved] = useState<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   
+  // Selection State
+  const [selectedCell, setSelectedCell] = useState<{r: number, c: number} | null>(null);
+
   // Auto-save UI state
   const [isAutoSaving, setIsAutoSaving] = useState(false);
 
@@ -107,7 +110,36 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
-  // --- End Undo/Redo Logic ---
+  // --- Formatting Logic ---
+  const handleFormat = (styleKey: string, value: any) => {
+    if (!selectedCell) {
+        alert("يرجى تحديد خلية أولاً.");
+        return;
+    }
+
+    const { r, c } = selectedCell;
+    const newData = [...sheetData];
+    
+    // Ensure cell exists
+    if (!newData[r]) newData[r] = [];
+    const currentRow = newData[r];
+    // Pad if necessary
+    while (currentRow.length <= c) currentRow.push({ value: "", style: {} });
+    
+    const cell = currentRow[c] || { value: "", style: {} };
+    const currentStyle = cell.style || {};
+
+    // Toggle logic for boolean values
+    let newValue = value;
+    if (styleKey === 'bold') newValue = !currentStyle.bold;
+    if (styleKey === 'italic') newValue = !currentStyle.italic;
+
+    const newStyle = { ...currentStyle, [styleKey]: newValue };
+
+    currentRow[c] = { ...cell, style: newStyle };
+    
+    saveToHistory(newData);
+  };
 
   // 1. Load from LocalStorage on startup (Browser Persistence)
   useEffect(() => {
@@ -273,6 +305,13 @@ const App: React.FC = () => {
     handleSendMessage("قم بعملية (الإكمال التلقائي الذكي): اقرأ أسماء المنتجات الموجودة، وابحث في الإنترنت عن مواصفاتها الحقيقية (الوصف، الوزن، الباركود، السعر). املأ الخانات الفارغة ببيانات حقيقية 100% فقط.", undefined);
   };
 
+  const handleAutoCategorize = () => {
+    handleSendMessage(`Analyze the product titles in the sheet and attempt to automatically categorize them into the 'Type' column (e.g., 'Shirt', 'Pants', 'Accessory', 'Electronics') based on common patterns found in the 'Title'.
+    1. If the 'Type' column doesn't exist, create it (ADD_COL).
+    2. Populate the column based on the Title.
+    3. If a category is ambiguous, mark it as "Review".`, undefined, true);
+  };
+
   const handleShopifyFormat = () => {
     handleSendMessage(`قم بإعادة تنسيق الملف بالكامل ليطابق نموذج منتجات Shopify (CSV) القياسي. 
     1. أعد بناء الجدول (SET_DATA) باستخدام العناوين الرسمية: Handle, Title, Body (HTML), Vendor, Type, Tags, Published, Option1 Name, Option1 Value, Variant SKU, Variant Grams, Variant Inventory Qty, Variant Price, Image Src.
@@ -427,22 +466,6 @@ const App: React.FC = () => {
   // --- End Find and Replace Logic ---
 
   const handleCellEdit = (rowIndex: number, colIndex: number, value: string) => {
-    // Only save to history if it's a new "session" of editing? 
-    // For simplicity, we save every keystroke is bad. 
-    // Usually spreadsheet saves on blur. 
-    // Here we will just update state, but to support Undo we need to know when to push to history.
-    // For this simple implementation, we update sheetData directly, but to properly undo, we should probably
-    // wrap this. However, pushing to history on every char is too much.
-    // Let's implement a simplified approach: We assume granular edits don't trigger history push immediately
-    // OR we change the Spreadsheet component to only trigger onBlur.
-    // Given the current Spreadsheet implementation uses onChange, we'll direct update but standard Undo might be tricky.
-    // BETTER APPROACH: We won't change Spreadsheet component now. We will just direct update.
-    // BUT we need `saveToHistory` for AI operations and bulk ops. 
-    
-    // For cell edit, we update state directly.
-    // To support undo for cell edits, we should modify Spreadsheet to fire onBlur or similar.
-    // For now, let's just update the state.
-    
     const newData = [...sheetData];
     if (!newData[rowIndex]) newData[rowIndex] = [];
     newData[rowIndex] = [...newData[rowIndex]];
@@ -470,13 +493,13 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, { role, text, isError, image, timestamp: Date.now() }]);
   };
 
-  const handleSendMessage = async (text: string, image?: string) => {
+  const handleSendMessage = async (text: string, image?: string, isDeepThink?: boolean) => {
     addMessage('user', text, false, image);
     setIsLoading(true);
 
     try {
-      // Pass policyMode to the service
-      const response = await sendMessageToGemini(text, sheetData, policyMode, image);
+      // Pass policyMode and DeepThink to the service
+      const response = await sendMessageToGemini(text, sheetData, policyMode, image, isDeepThink);
       
       // Save current state before AI modification
       // Deep copy to ensure history integrity
@@ -565,6 +588,15 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // Helper to get selected cell style
+  const getSelectedCellStyle = () => {
+    if (!selectedCell) return {};
+    const { r, c } = selectedCell;
+    const cell = sheetData[r]?.[c];
+    return cell?.style || {};
+  };
+  const activeStyle = getSelectedCellStyle();
 
   return (
     <div 
@@ -722,6 +754,15 @@ const App: React.FC = () => {
               </button>
 
                <button 
+                onClick={handleAutoCategorize}
+                className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-400 to-red-500 text-white rounded-lg hover:shadow-lg hover:shadow-orange-200 transition-all font-bold text-sm"
+                title="تصنيف المنتجات تلقائياً"
+              >
+                  <Tags size={16} />
+                  Auto Type
+              </button>
+
+               <button 
                 onClick={handleAutoComplete}
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-500 text-white rounded-lg hover:shadow-lg hover:shadow-teal-200 transition-all font-bold text-sm"
                 title="إكمال تلقائي للبيانات"
@@ -797,6 +838,100 @@ const App: React.FC = () => {
           </div>
         </header>
 
+        {/* Formatting Toolbar - Only visible in Spreadsheet mode */}
+        {viewMode === 'spreadsheet' && (
+          <div className="bg-gray-50 border-b border-gray-200 px-6 py-2 flex items-center gap-2 overflow-x-auto shadow-inner">
+             <div className="flex bg-white rounded-md border border-gray-300 shadow-sm">
+                 <button 
+                   onClick={() => handleFormat('bold', true)} 
+                   className={`p-1.5 hover:bg-gray-100 rounded-r-md ${activeStyle.bold ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}`} 
+                   title="عريض"
+                 >
+                   <Bold size={16} />
+                 </button>
+                 <button 
+                   onClick={() => handleFormat('italic', true)} 
+                   className={`p-1.5 hover:bg-gray-100 border-r border-gray-200 rounded-l-md ${activeStyle.italic ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}`}
+                   title="مائل"
+                 >
+                   <Italic size={16} />
+                 </button>
+             </div>
+
+             <div className="h-4 w-px bg-gray-300 mx-1"></div>
+
+             <div className="flex bg-white rounded-md border border-gray-300 shadow-sm">
+                 <button 
+                   onClick={() => handleFormat('align', 'right')} 
+                   className={`p-1.5 hover:bg-gray-100 rounded-r-md ${activeStyle.align === 'right' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}`}
+                 >
+                   <AlignRight size={16} />
+                 </button>
+                 <button 
+                   onClick={() => handleFormat('align', 'center')} 
+                   className={`p-1.5 hover:bg-gray-100 border-r border-l border-gray-200 ${activeStyle.align === 'center' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}`}
+                 >
+                   <AlignCenter size={16} />
+                 </button>
+                 <button 
+                   onClick={() => handleFormat('align', 'left')} 
+                   className={`p-1.5 hover:bg-gray-100 rounded-l-md ${activeStyle.align === 'left' ? 'bg-blue-100 text-blue-600' : 'text-gray-600'}`}
+                 >
+                   <AlignLeft size={16} />
+                 </button>
+             </div>
+
+             <div className="h-4 w-px bg-gray-300 mx-1"></div>
+             
+             <div className="flex items-center gap-2">
+                 <div className="relative group">
+                     <button className="p-1.5 hover:bg-white rounded-md text-gray-600 border border-transparent hover:border-gray-300 flex items-center gap-1" title="لون الخلفية">
+                        <PaintBucket size={16} />
+                        <div className="w-4 h-4 rounded border border-gray-200" style={{ backgroundColor: activeStyle.backgroundColor || '#ffffff' }}></div>
+                     </button>
+                     <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg p-2 z-50 hidden group-hover:grid grid-cols-5 gap-1 w-32">
+                        {['#ffffff', '#fecaca', '#fde68a', '#d9f99d', '#bfdbfe', '#e9d5ff'].map(color => (
+                          <button 
+                            key={color} 
+                            className="w-5 h-5 rounded border border-gray-200 hover:scale-110 transition-transform" 
+                            style={{backgroundColor: color}}
+                            onClick={() => handleFormat('backgroundColor', color)}
+                          />
+                        ))}
+                        <button onClick={() => handleFormat('backgroundColor', undefined)} className="col-span-5 text-xs text-red-500 hover:underline pt-1">مسح</button>
+                     </div>
+                 </div>
+
+                 <div className="relative group">
+                     <button className="p-1.5 hover:bg-white rounded-md text-gray-600 border border-transparent hover:border-gray-300 flex items-center gap-1" title="لون النص">
+                        <Type size={16} />
+                        <div className="w-4 h-4 rounded border border-gray-200" style={{ backgroundColor: activeStyle.color || '#000000' }}></div>
+                     </button>
+                     <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded shadow-lg p-2 z-50 hidden group-hover:grid grid-cols-5 gap-1 w-32">
+                        {['#000000', '#ef4444', '#d97706', '#16a34a', '#2563eb', '#9333ea'].map(color => (
+                          <button 
+                            key={color} 
+                            className="w-5 h-5 rounded border border-gray-200 hover:scale-110 transition-transform" 
+                            style={{backgroundColor: color}}
+                            onClick={() => handleFormat('color', color)}
+                          />
+                        ))}
+                        <button onClick={() => handleFormat('color', undefined)} className="col-span-5 text-xs text-red-500 hover:underline pt-1">مسح</button>
+                     </div>
+                 </div>
+             </div>
+
+             <div className="flex-1"></div>
+             {selectedCell ? (
+               <span className="text-xs text-gray-500 font-mono">
+                 Cell: {String.fromCharCode(65 + selectedCell.c)}{selectedCell.r + 1}
+               </span>
+             ) : (
+               <span className="text-xs text-gray-400">حدد خلية للتنسيق</span>
+             )}
+          </div>
+        )}
+
         {showUrlInput && (
           <div className="bg-white border-b border-purple-100 p-4 animate-in slide-in-from-top-2">
             <div className="flex gap-2 max-w-2xl mx-auto">
@@ -868,6 +1003,8 @@ const App: React.FC = () => {
                     onAddRow={handleAddRow}
                     onAddCol={handleAddCol}
                     onDeleteCol={handleDeleteCol}
+                    selectedCell={selectedCell}
+                    onSelect={(r, c) => setSelectedCell({ r, c })}
                 />
              )
            ) : (

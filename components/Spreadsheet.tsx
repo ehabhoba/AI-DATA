@@ -10,6 +10,9 @@ interface SpreadsheetProps {
   onDeleteCol?: (colIndex: number) => void;
   onAddCol?: (colIndex: number) => void;
   highlightedCell?: { r: number, c: number } | null;
+  // New props for selection handling
+  selectedCell?: { r: number, c: number } | null;
+  onSelect?: (rowIndex: number, colIndex: number) => void;
 }
 
 const Spreadsheet: React.FC<SpreadsheetProps> = ({ 
@@ -19,7 +22,9 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
   onDeleteRow, 
   onAddRow,
   onAddCol,
-  onDeleteCol
+  onDeleteCol,
+  selectedCell,
+  onSelect
 }) => {
   // Context Menu State: Type (row/col), position (x,y), and index
   const [contextMenu, setContextMenu] = useState<{ 
@@ -84,7 +89,7 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
             {cols.map((colIndex) => (
               <th 
                 key={colIndex} 
-                className="border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 cursor-pointer select-none transition-colors group"
+                className={`border border-gray-300 p-2 w-[120px] text-center font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 cursor-pointer select-none transition-colors group ${selectedCell?.c === colIndex ? 'bg-blue-100 text-blue-800' : ''}`}
                 onContextMenu={(e) => handleColContextMenu(e, colIndex)}
                 title="Right click for options"
               >
@@ -101,10 +106,10 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
             return (
               <tr 
                 key={rowIndex} 
-                className="hover:bg-blue-50 transition-colors group"
+                className={`transition-colors group ${selectedCell?.r === rowIndex ? 'bg-blue-50/50' : 'hover:bg-blue-50'}`}
               >
                 <td 
-                  className="border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none cursor-pointer hover:bg-gray-200 relative"
+                  className={`border border-gray-300 bg-gray-50 text-center text-gray-500 font-mono select-none cursor-pointer hover:bg-gray-200 relative ${selectedCell?.r === rowIndex ? 'bg-blue-100 text-blue-800 font-bold' : ''}`}
                   onContextMenu={(e) => handleRowContextMenu(e, rowIndex)}
                 >
                   {rowIndex + 1}
@@ -113,21 +118,29 @@ const Spreadsheet: React.FC<SpreadsheetProps> = ({
                 {cols.map((colIndex) => {
                   const cell: Cell = row[colIndex] || { value: '', style: {} };
                   const style = cell.style || {};
+                  
+                  // Priority: Highlight (Find) > Selection > Default Style
                   const isHighlighted = highlightedCell?.r === rowIndex && highlightedCell?.c === colIndex;
+                  const isSelected = selectedCell?.r === rowIndex && selectedCell?.c === colIndex;
                   
                   return (
                     <td 
                       key={`${rowIndex}-${colIndex}`} 
-                      className={`border border-gray-300 p-0 relative ${isHighlighted ? 'ring-2 ring-yellow-400 z-20' : ''}`}
+                      className={`border border-gray-300 p-0 relative ${
+                        isHighlighted ? 'ring-2 ring-yellow-400 z-20' : 
+                        isSelected ? 'ring-2 ring-blue-500 z-20' : ''
+                      }`}
                       style={{
                         backgroundColor: isHighlighted ? '#fef9c3' : (style.backgroundColor || 'transparent')
                       }}
+                      onClick={() => onSelect?.(rowIndex, colIndex)}
                     >
                       <input 
                         type="text"
-                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-inset z-10 relative truncate font-sans"
+                        className="w-full h-full p-2 bg-transparent outline-none border-none text-gray-900 focus:bg-white z-10 relative truncate font-sans"
                         value={cell.value !== undefined && cell.value !== null ? String(cell.value) : ''}
                         onChange={(e) => onCellChange(rowIndex, colIndex, e.target.value)}
+                        onFocus={() => onSelect?.(rowIndex, colIndex)}
                         style={{
                           color: style.color || 'inherit',
                           fontWeight: style.bold ? 'bold' : 'normal',

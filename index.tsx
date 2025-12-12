@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { AlertCircle } from 'lucide-react';
+import { Analytics } from '@vercel/analytics/react';
 
 // GLOBAL ERROR HANDLER FOR "WHITE SCREEN" ISSUES
 // Catches errors that happen before React even starts (like import errors or process is not defined)
@@ -85,6 +86,7 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
+      <Analytics />
     </ErrorBoundary>
   </React.StrictMode>
 );

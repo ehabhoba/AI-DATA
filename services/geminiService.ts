@@ -40,7 +40,8 @@ export const sendMessageToGemini = async (
   prompt: string,
   currentSheetData: SheetData,
   isPolicyMode: boolean = false,
-  imageBase64?: string
+  imageBase64?: string,
+  isDeepThink: boolean = false
 ): Promise<AIResponse> => {
   
   // Initialize AI client lazily inside the function to prevent top-level crashes
@@ -121,24 +122,33 @@ export const sendMessageToGemini = async (
 
       parts.push({ text: `User Request: ${prompt}` });
 
+      // Build Config
+      const config: any = {
+        systemInstruction: systemInstruction,
+        tools: [{ googleSearch: {} }], 
+        temperature: 0.2, // Lower temperature for more deterministic JSON
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        ]
+      };
+
+      // Add thinking config if deep thinking is enabled
+      // Note: thinkingConfig is only supported on specific models like gemini-2.5-flash-thinking (if available) or as a parameter on 2.5 series
+      if (isDeepThink) {
+         // Using thinking budget for complex reasoning
+         config.thinkingConfig = { thinkingBudget: 4096 }; 
+      }
+
       // Use gemini-2.5-flash for speed and efficiency
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', 
         contents: [
           { role: 'user', parts: parts }
         ],
-        config: {
-          systemInstruction: systemInstruction,
-          tools: [{ googleSearch: {} }], 
-          temperature: 0.2, // Lower temperature for more deterministic JSON
-          // Disable safety settings to prevent "No response" on commercial content
-          safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          ]
-        }
+        config: config
       });
 
       const responseText = response.text;

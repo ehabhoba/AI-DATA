@@ -1,16 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
-import { Send, Loader2, Sparkles, Search, Image as ImageIcon, X, Paperclip } from 'lucide-react';
+import { Send, Loader2, Sparkles, Search, Image as ImageIcon, X, Paperclip, BrainCircuit } from 'lucide-react';
 
 interface ChatProps {
   messages: Message[];
-  onSendMessage: (text: string, image?: string) => void;
+  onSendMessage: (text: string, image?: string, isDeepThink?: boolean) => void;
   isLoading: boolean;
 }
 
 const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isDeepThink, setIsDeepThink] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,7 +37,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if ((input.trim() || selectedImage) && !isLoading) {
-      onSendMessage(input, selectedImage || undefined);
+      onSendMessage(input, selectedImage || undefined, isDeepThink);
       setInput('');
       setSelectedImage(null);
     }
@@ -64,10 +65,10 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
             </div>
             <p className="text-sm font-medium text-gray-600">كيف يمكنني مساعدتك في بياناتك؟</p>
             <div className="flex flex-col gap-2 text-xs">
-               <button onClick={() => onSendMessage("افحص الملف وأصلح الأخطاء والبيانات المفقودة", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
+               <button onClick={() => onSendMessage("افحص الملف وأصلح الأخطاء والبيانات المفقودة", undefined, true)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
                   "افحص الملف وأصلح البيانات المفقودة"
                </button>
-               <button onClick={() => onSendMessage("تأكد من توافق الأعمدة مع Shopify وصححها", undefined)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
+               <button onClick={() => onSendMessage("تأكد من توافق الأعمدة مع Shopify وصححها", undefined, false)} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right">
                   "تصحيح الملف لـ Shopify"
                </button>
                <button onClick={() => fileInputRef.current?.click()} className="bg-white border hover:bg-emerald-50 p-2 rounded text-emerald-700 transition text-right flex items-center justify-end gap-2">
@@ -124,6 +125,19 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
           </div>
         )}
 
+        <div className="flex items-center gap-2 mb-2 px-1">
+             <label className={`flex items-center gap-2 text-xs font-bold cursor-pointer transition-colors ${isDeepThink ? 'text-purple-600' : 'text-gray-400'}`}>
+                <input 
+                  type="checkbox" 
+                  checked={isDeepThink} 
+                  onChange={(e) => setIsDeepThink(e.target.checked)} 
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <BrainCircuit size={14} />
+                تفكير عميق (Deep Think)
+             </label>
+        </div>
+
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
           <input 
             type="file" 
@@ -147,16 +161,22 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, isLoading }) => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="اكتب طلبك... (مثلاً: أصلح التواريخ)"
+              placeholder={isDeepThink ? "اطلب تحليلاً معقداً..." : "اكتب طلبك... (مثلاً: أصلح التواريخ)"}
               disabled={isLoading}
-              className="w-full px-4 py-3 bg-gray-100 border-transparent focus:bg-white border focus:border-emerald-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all text-sm"
+              className={`w-full px-4 py-3 border-transparent rounded-xl focus:outline-none focus:ring-2 transition-all text-sm ${
+                isDeepThink 
+                ? 'bg-purple-50 focus:bg-white focus:border-purple-500 focus:ring-purple-200' 
+                : 'bg-gray-100 focus:bg-white focus:border-emerald-500 focus:ring-emerald-200'
+              }`}
             />
           </div>
           
           <button
             type="submit"
             disabled={(!input.trim() && !selectedImage) || isLoading}
-            className="p-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md shadow-emerald-200"
+            className={`p-3 text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md ${
+                isDeepThink ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-200' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+            }`}
           >
             <Send className="w-4 h-4" />
           </button>
