@@ -49,6 +49,8 @@ export interface SheetOperation {
 export interface AIResponse {
   message: string;
   operations: SheetOperation[];
+  // Added image property to support AI-generated or edited images in the response structure
+  image?: string;
 }
 
 // Database & Schema Types

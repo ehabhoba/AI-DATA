@@ -13,7 +13,7 @@ export const detectFlashFillPattern = (
   if (value === null || value === '') return null;
   
   const targetVal = String(value).trim();
-  if (targetVal.length < 2) return null; // Ignore very short inputs
+  if (targetVal.length < 1) return null; // Relaxed length check
 
   const row = data[rowIdx];
   if (!row) return null;
@@ -29,7 +29,7 @@ export const detectFlashFillPattern = (
     if (sourceVal === targetVal) continue; // Exact match, probably copy-paste, ignore
 
     // --- Pattern 1: Delimiter Split (e.g. "John" from "John Doe") ---
-    const delimiters = [' ', ',', '.', '-', '_', '@', '/'];
+    const delimiters = [' ', ',', '.', '-', '_', '@', '/', '|'];
     for (const delim of delimiters) {
       if (sourceVal.includes(delim)) {
         const parts = sourceVal.split(delim);
@@ -51,9 +51,6 @@ export const detectFlashFillPattern = (
             };
           }
         }
-        
-        // Check if target matches the *rest* (e.g. "Doe" from "John Doe" - might be index 1 onwards)
-        // This is simplified, let's stick to single part extraction for robustness first
       }
     }
 
@@ -81,10 +78,10 @@ export const detectFlashFillPattern = (
          let type = "";
          let transform: ((s: string) => string) | null = null;
 
-         if (targetVal === targetVal.toUpperCase()) {
+         if (targetVal === targetVal.toUpperCase() && sourceVal !== sourceVal.toUpperCase()) {
              type = "تحويل لأحرف كبيرة";
              transform = (s) => s.toUpperCase();
-         } else if (targetVal === targetVal.toLowerCase()) {
+         } else if (targetVal === targetVal.toLowerCase() && sourceVal !== sourceVal.toLowerCase()) {
              type = "تحويل لأحرف صغيرة";
              transform = (s) => s.toLowerCase();
          }
@@ -96,10 +93,60 @@ export const detectFlashFillPattern = (
              }
          }
     }
+
+    // --- Pattern 4: Combination (First + Last) ---
+    // This requires checking a SECOND source column, which complicates the loop O(n^2).
+    // For now, we stick to 1:1 derivation for performance.
   }
 
   return null;
 };
+
+/**
+ * Scans the entire sheet to find potential fill opportunities.
+ * Returns the suggestion with the most potential updates.
+ */
+export const scanForFlashFillPatterns = (data: SheetData): FlashFillSuggestion | null => {
+    if (!data || data.length < 2) return null;
+
+    let bestSuggestion: FlashFillSuggestion | null = null;
+    let maxUpdates = 0;
+
+    const rowCount = data.length;
+    // Limit to first 20 columns to avoid freezing large sheets
+    const colCount = Math.min(data[0]?.length || 0, 20); 
+
+    // Iterate through columns that might need filling (Target Columns)
+    for (let targetCol = 0; targetCol < colCount; targetCol++) {
+        
+        // Find a non-empty cell in this target column to use as a "seed" for pattern detection
+        // We look for the last non-empty cell as it's likely the user just typed it
+        let seedRowIdx = -1;
+        
+        // Find a row where Target is filled AND potential Source is filled
+        for (let r = rowCount - 1; r >= 1; r--) {
+             const cell = data[r][targetCol];
+             if (cell && cell.value !== '' && cell.value !== null) {
+                 seedRowIdx = r;
+                 break;
+             }
+        }
+
+        if (seedRowIdx !== -1) {
+            const seedValue = data[seedRowIdx][targetCol].value;
+            // Attempt to detect pattern using this seed
+            const suggestion = detectFlashFillPattern(data, seedRowIdx, targetCol, seedValue);
+            
+            if (suggestion && suggestion.updates.length > maxUpdates) {
+                maxUpdates = suggestion.updates.length;
+                bestSuggestion = suggestion;
+            }
+        }
+    }
+
+    return bestSuggestion;
+};
+
 
 /**
  * Generates updates for the target column based on the transformation rule.
@@ -112,10 +159,6 @@ const simulatePattern = (
     transform: (source: string | number | boolean) => string | null
 ): FlashFillUpdate[] => {
     const updates: FlashFillUpdate[] = [];
-    
-    // We check a max of 200 rows for performance in this demo
-    // Start from row 0 to catch missed ones, or start from current row? 
-    // Usually Flash Fill fills the whole column.
     
     for (let r = 0; r < data.length; r++) {
         const targetCell = data[r][targetCol];

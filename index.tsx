@@ -1,3 +1,4 @@
+
 import React, { Component, ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -52,13 +53,19 @@ interface ErrorBoundaryState {
 }
 
 // Simple Error Boundary to catch runtime errors (like missing API keys or process is not defined)
+// Fix: Explicitly declare state and props to resolve TypeScript "does not exist on type ErrorBoundary" errors.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Adding explicit type declarations for state and props to fix property access errors (Fixes errors on lines 60, 76, 90, 114)
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
       hasError: false,
       error: null
     };
+    this.props = props;
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -70,6 +77,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   render() {
+    // Access state via this.state - correctly typed through explicit member declaration
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center h-screen bg-gray-50 text-center p-6" dir="rtl">
@@ -107,6 +115,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
+    // Access props via this.props - correctly typed through explicit member declaration
     return this.props.children;
   }
 }

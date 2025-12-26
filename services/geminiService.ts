@@ -1,56 +1,45 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+
+import { GoogleGenAI, Modality } from "@google/genai";
 import { SheetData, AIResponse, OperationType } from '../types';
 
-// GLOBAL STATE for Key Rotation
-// We parse the comma-separated keys from process.env.API_KEY
 const RAW_API_KEY = process.env.API_KEY || "";
 const API_KEYS = RAW_API_KEY.split(',').filter(k => k && k.trim().length > 0);
 let currentKeyIndex = 0;
 
-// Safety mask for logging (show first 4 chars only)
-const maskKey = (key: string) => key && key.length > 8 ? `${key.substring(0, 4)}...` : '****';
-
 const getNextKey = () => {
   if (API_KEYS.length <= 1) return API_KEYS[0];
   currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
-  console.log(`Rotating API Key to index: ${currentKeyIndex} (${maskKey(API_KEYS[currentKeyIndex])})`);
   return API_KEYS[currentKeyIndex];
 };
 
-const getCurrentKey = () => {
-  if (API_KEYS.length === 0) return "";
-  return API_KEYS[currentKeyIndex];
-};
+const getCurrentKey = () => API_KEYS[currentKeyIndex] || "";
 
-// Helper to format sheet data for context
+// Enhanced context formatting for large datasets
 const formatSheetContext = (data: SheetData): string => {
-  const MAX_ROWS = 60; // Limit context rows to save tokens/latency
-  // Map complex Cell objects to simple values for the AI context
-  const simpleData = data.slice(0, MAX_ROWS).map(row => 
-    row?.map(cell => cell?.value)
-  );
-  
   const rowCount = data.length;
   const colCount = data[0]?.length || 0;
   
-  // Try to identify headers specifically
-  const headers = simpleData[0] || [];
+  // If data is huge, we send a sample (first 40, last 10) to maintain context without hitting limits
+  const sampleRows = rowCount > 60 
+    ? [...data.slice(0, 40), ...data.slice(-20)]
+    : data;
+
+  const preview = sampleRows.map(row => row?.map(cell => cell?.value));
   
   return JSON.stringify({
-    summary: `Total Rows: ${rowCount}, Total Columns: ${colCount}`,
-    headers: headers,
-    preview: simpleData
+    totalRows: rowCount,
+    totalCols: colCount,
+    headers: data[0]?.map(c => c?.value) || [],
+    dataPreview: preview,
+    note: "This is a representative sample of a larger dataset. Apply logic to all rows."
   });
 };
 
 const cleanJsonResponse = (text: string): string => {
   if (!text) return "{}";
-  // Remove markdown code blocks if present (```json ... ```)
   let clean = text.replace(/```json\n?|```/g, '').trim();
-  // Find the first '{' and last '}' to handle any preamble/postscript text
   const firstBrace = clean.indexOf('{');
   const lastBrace = clean.lastIndexOf('}');
-  
   if (firstBrace !== -1 && lastBrace !== -1) {
     clean = clean.substring(firstBrace, lastBrace + 1);
   }
@@ -62,119 +51,85 @@ export const sendMessageToGemini = async (
   currentSheetData: SheetData,
   isPolicyMode: boolean = false,
   imageBase64?: string,
-  isDeepThink: boolean = false
+  isDeepThink: boolean = false,
+  isFast: boolean = false
 ): Promise<AIResponse> => {
   
   if (API_KEYS.length === 0) {
-    return {
-      message: "⚠️ **خطأ: مفتاح API مفقود!**\n\nيجب إعداد مفتاح API الخاص بـ Google Gemini ليعمل التطبيق.\n\n**للمستخدمين على Vercel:**\n1. اذهب إلى إعدادات المشروع (Settings > Environment Variables).\n2. أضف متغيرات باسم `GEMINI_API_KEY_1`, `GEMINI_API_KEY_2`... إلخ.\n3. ضع قيم المفاتيح.\n4. قم بإعادة نشر المشروع (Redeploy).",
-      operations: []
-    };
+    return { message: "⚠️ خطأ: مفتاح API مفقود!", operations: [] };
   }
 
   const sheetContext = formatSheetContext(currentSheetData);
+  
+  // Model Selection Logic based on user needs
+  let modelName = 'gemini-3-flash-preview'; 
+  if (isDeepThink) modelName = 'gemini-3-pro-preview';
+  else if (isFast) modelName = 'gemini-flash-lite-latest';
+  else if (imageBase64 && prompt.match(/(تعديل|إزالة|إضافة|فلتر|تحسين|edit|filter|remove|image)/i)) {
+    modelName = 'gemini-2.5-flash-image';
+  }
 
   const systemInstruction = `
-    You are "ExcelAI Pro", a specialized AI for managing Product Feeds (Shopify, Google Merchant).
+    You are "ExcelAI Pro Max", a specialist in high-volume data architecture and product management.
     
-    CRITICAL INSTRUCTION: You MUST return valid JSON only. Do not add markdown formatting.
-    
-    Your Capabilities:
-    1. **Data Cleaning & Formatting**: Fix capitalization, remove whitespace, standardizing formats.
-    2. **Shopify & Google Compliance**: Ensure data meets strict policy requirements (GTIN, Price, Descriptions).
-    3. **Auto-Correction**: Fix spelling, grammar, and encoding errors in Arabic and English.
-    4. **Translation**: Translate Title/Description while KEEPING technical IDs (SKU, Handle) unchanged.
-    5. **Structure Engineering**: You can ADD_COL (with optional 'data' array to fill it), DELETE_COL, ADD_ROW, SET_DATA.
+    CRITICAL: You are handling professional product lists (e.g., Kemei, HomeGold). 
+    - Preserve unique IDs, SKUs, and image URLs.
+    - If user asks for image edits (e.g. "Add a retro filter"), use your image processing capabilities.
+    - For large datasets, provide operations that can be applied at scale.
+    - You MUST return valid JSON.
 
-    Policy Mode: ${isPolicyMode ? "STRICT (Remove promotional text, check caps)" : "STANDARD"}
-
-    Response Schema (JSON):
+    Response Schema:
     {
-      "message": "Brief summary of changes (Arabic/English based on user language).",
+      "message": "Summary of actions in Arabic",
       "operations": [
-        {
-          "type": "SET_CELL" | "ADD_ROW" | "DELETE_ROW" | "ADD_COL" | "DELETE_COL" | "SET_DATA",
-          "row": number, 
-          "col": number, 
-          "value": any,
-          "data": [[...]] // For SET_DATA, ADD_ROW, or ADD_COL (bulk column values in array of arrays format)
-        }
-      ]
+        {"type": "SET_DATA", "data": [[...]]} // Use this for bulk changes
+      ],
+      "image": "base64_result_if_image_edit_requested"
     }
 
-    Current Sheet Context:
+    Context:
     ${sheetContext}
   `;
 
-  // Key Rotation Loop
-  // We try up to (Number of Keys * 2) times to handle transient errors and rotation
-  const maxAttempts = Math.max(2, API_KEYS.length * 2);
+  const maxAttempts = 2;
   let lastError: any = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
-      const currentApiKey = getCurrentKey();
-      const ai = new GoogleGenAI({ apiKey: currentApiKey });
-
+      const ai = new GoogleGenAI({ apiKey: getCurrentKey() });
       const parts: any[] = [];
       
-      // Add image if present
       if (imageBase64) {
         const base64Data = imageBase64.split(',')[1] || imageBase64;
-        parts.push({
-          inlineData: {
-            mimeType: 'image/jpeg', 
-            data: base64Data
-          }
-        });
-        parts.push({ text: "Analyze this image and extract data into the spreadsheet structure." });
+        parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
       }
+      parts.push({ text: prompt });
 
-      parts.push({ text: `User Request: ${prompt}` });
-
-      // Build Config
       const config: any = {
-        systemInstruction: systemInstruction,
-        tools: [{ googleSearch: {} }], 
-        temperature: 0.2, // Lower temperature for more deterministic JSON
-        safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        ]
+        systemInstruction,
+        temperature: isDeepThink ? 0.3 : 0.1,
+        tools: modelName.includes('pro') ? [{ googleSearch: {} }] : [],
       };
 
       if (isDeepThink) {
-         config.thinkingConfig = { thinkingBudget: 4096 }; 
+        // Max thinking budget for complex reasoning as requested
+        config.thinkingConfig = { thinkingBudget: 32768 };
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', 
-        contents: [
-          { role: 'user', parts: parts }
-        ],
-        config: config
+        model: modelName,
+        contents: { parts },
+        config
       });
 
-      const responseText = response.text;
-      
-      if (!responseText) {
-        throw new Error("Received empty response from AI.");
-      }
+      const responseText = response.text || "";
+      let editedImage: string | undefined;
 
-      // Success! Process response
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      let searchSources = "";
-      if (groundingChunks) {
-          const uniqueUrls = new Set(
-            groundingChunks
-              .map(c => c.web?.uri)
-              .filter(u => u)
-          );
-          if (uniqueUrls.size > 0) {
-             searchSources = `\n\n🔍 المصادر:\n` + Array.from(uniqueUrls).map(u => `- ${u}`).join("\n");
-          }
+      // Check for image output if it was an image-to-image task
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          editedImage = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
       }
 
       let parsedResponse: AIResponse;
@@ -182,64 +137,18 @@ export const sendMessageToGemini = async (
         const cleanedJson = cleanJsonResponse(responseText);
         parsedResponse = JSON.parse(cleanedJson) as AIResponse;
       } catch (e) {
-        console.warn("JSON Parse Retry", e);
-        parsedResponse = {
-          message: responseText,
-          operations: []
-        };
+        parsedResponse = { message: responseText, operations: [] };
       }
 
-      if (searchSources) {
-        parsedResponse.message += searchSources;
-      }
-
+      if (editedImage) parsedResponse.image = editedImage;
       return parsedResponse;
 
     } catch (error: any) {
       lastError = error;
-      const currentKey = getCurrentKey();
-      console.error(`Gemini Attempt ${attempt + 1} Failed (Key: ${maskKey(currentKey)})`, error);
-      
-      let errorMsg = error.message || '';
-      // Parse detailed error if available
-      try {
-         if (errorMsg.includes('{')) {
-             const jsonPart = errorMsg.substring(errorMsg.indexOf('{'));
-             const parsedObj = JSON.parse(jsonPart);
-             if (parsedObj.error?.message) errorMsg = parsedObj.error.message;
-         }
-      } catch(e) { /* ignore */ }
-
-      const isLeaked = errorMsg.includes('leaked') || errorMsg.includes('API key was reported as leaked') || error.status === 403;
-      const isQuota = error.status === 429 || errorMsg.includes('429');
-      
-      // If Key is Leaked or Forbidden, ROTATE immediately and retry
-      if (isLeaked) {
-         console.warn("Key appears leaked or invalid. Rotating...");
-         getNextKey();
-         continue; 
-      }
-
-      // If Quota limit, ROTATE and retry (load balancing)
-      if (isQuota) {
-         console.warn("Quota exceeded. Rotating...");
-         getNextKey();
-         // Small delay before retry
-         await new Promise(resolve => setTimeout(resolve, 500));
-         continue;
-      }
-
-      // If other error, wait and retry (standard backoff) but stick to same key unless it's a persistent issue
-      if (attempt < maxAttempts - 1) {
-         await new Promise(resolve => setTimeout(resolve, 1000));
-         continue;
-      }
+      if (error.status === 429) getNextKey();
+      await new Promise(r => setTimeout(r, 500));
     }
   }
 
-  // If we exhaust all attempts
-  return {
-    message: `⛔ **فشل الاتصال بجميع المفاتيح**\n\nلقد حاولنا استخدام ${API_KEYS.length} مفاتيح متوفرة ولكن جميعها فشلت. \nآخر خطأ: ${lastError?.message || 'Unknown Error'}`,
-    operations: []
-  };
+  return { message: `⛔ خطأ فني: ${lastError?.message}`, operations: [] };
 };
